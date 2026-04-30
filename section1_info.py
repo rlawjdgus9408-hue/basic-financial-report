@@ -111,7 +111,7 @@ def render_company_info():
         emp_count = st.text_input("👥 임직원 수 (숫자만)", value=st.session_state.emp_count, placeholder="예:10", key="input_emp_count")
         
         # 활용시스템: 다중 선택 + 기타 직접 입력
-        erp_options = ["이카운트", "더존위하고", "더존비즈온", "기타"]
+        erp_options = ["더존계열", "더존 위하고", "세무사랑", "경리나라", "이카운트", "기타"]
         current_erp = st.session_state.get('erp_system', [])
         if isinstance(current_erp, str):
             current_erp = [current_erp] if current_erp else []
