@@ -7,7 +7,7 @@ import re
 
 def render_file_upload():
     """자료 업로드 렌더링"""
-    st.markdown("### 2. 자료 업로드")
+    st.markdown("### 3. 자료 업로드")
     col_up1, col_up2 = st.columns(2)
     uploaded_file = col_up1.file_uploader("재무진단 엑셀(RAW) 업로드", type=["xlsx"])
     template_file = col_up2.file_uploader("워드 템플릿(.docx) 업로드", type=["docx"])

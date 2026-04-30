@@ -257,26 +257,43 @@ def render_financial_metrics(df_bs, df_is, years):
     
     # ============ 문서 포함용 지표 선택 ============
     st.markdown("#### 📄 문서 포함 지표 선택")
+    
+    # 리셋 버튼
+    col_reset, _ = st.columns([1, 4])
+    with col_reset:
+        if st.button("🔄 다시 선택하기", key="reset_indicators"):
+            # 모든 선택 초기화
+            for ind in bs_indicators:
+                st.session_state[f"doc_bs_{ind}"] = False
+            for ind in is_indicators:
+                st.session_state[f"doc_is_{ind}"] = False
+            for ind in common_indicators:
+                st.session_state[f"doc_common_{ind}"] = False
+            st.rerun()
+    
     col_doc1, col_doc2 = st.columns(2)
     
     with col_doc1:
         st.markdown("**BS 지표**")
         selected_bs = []
         for ind in bs_indicators:
-            if st.checkbox(f"  {ind}", value=True, key=f"doc_bs_{ind}"):
+            default_val = st.session_state.get(f"doc_bs_{ind}", False)
+            if st.checkbox(f"  {ind}", value=default_val, key=f"doc_bs_{ind}"):
                 selected_bs.append(ind)
     
     with col_doc2:
         st.markdown("**IS 지표**")
         selected_is = []
         for ind in is_indicators:
-            if st.checkbox(f"  {ind}", value=True, key=f"doc_is_{ind}"):
+            default_val = st.session_state.get(f"doc_is_{ind}", False)
+            if st.checkbox(f"  {ind}", value=default_val, key=f"doc_is_{ind}"):
                 selected_is.append(ind)
     
     st.markdown("**공통 지표**")
     selected_common = []
     for ind in common_indicators:
-        if st.checkbox(f"  {ind}", value=True, key=f"doc_common_{ind}"):
+        default_val = st.session_state.get(f"doc_common_{ind}", False)
+        if st.checkbox(f"  {ind}", value=default_val, key=f"doc_common_{ind}"):
             selected_common.append(ind)
     
     # 선택된 지표를 세션에 저장

@@ -6,16 +6,33 @@ import pandas as pd
 
 @st.cache_data
 def load_ksic_data():
-    """업종코드 CSV 파일 로드"""
+    """업종코드 Excel 파일 로드"""
     try:
-        df = pd.read_csv("업종코드_참조.csv", encoding="utf-8")
-        categories = df.groupby("업태")["업종코드"].apply(list).to_dict()
+        df = pd.read_excel("업종코드-표준산업분류 연계표.xlsx", sheet_name="연계표", header=3)
+        
+        # 실제 열 인덱스 사용 (0부터 시작)
+        # 4: 대분류_표준, 7: 중분류_표준, 9: 소분류_표준
+        categories = {}
+        for _, row in df.iterrows():
+            major = row.iloc[4]  # 대분류_표준
+            middle = row.iloc[6]  # 중분류_표준
+            minor = row.iloc[8]  # 소분류_표준
+            
+            if pd.notna(major) and pd.notna(middle) and pd.notna(minor):
+                if major not in categories:
+                    categories[major] = {}
+                if middle not in categories[major]:
+                    categories[major][middle] = []
+                if minor not in categories[major][middle]:
+                    categories[major][middle].append(minor)
+        
         return categories
-    except:
+    except Exception as e:
+        st.error(f"업종코드 로드 오류: {e}")
         return {
-            "농업": ["곡물 재배", "축산", "농업 서비스", "임업", "어업"],
-            "제조업": ["Food 제조", "전자부품 제조", "자동차 제조"],
-            "서비스": ["전문 서비스", "교육 서비스", "의료 서비스"]
+            "농업, 임업 및 어업": {"농업": ["작물 재배업"]},
+            "제조업": {"제조업": ["기타 제조업"]},
+            "서비스업": {"서비스업": ["기타 서비스업"]}
         }
 
 def render_company_info():
@@ -34,20 +51,40 @@ def render_company_info():
     if current_biz_major not in valid_keys:
         current_biz_major = valid_keys[0]
     
-    if current_biz_major != st.session_state.prev_biz_major:
+    # 대분류 변경 시 중분류, 소분류 초기화
+    if current_biz_major != st.session_state.get('prev_biz_major'):
         st.session_state.prev_biz_major = current_biz_major
-        st.session_state.input_biz_minor = ksic_categories[current_biz_major][0]
+        middle_keys = list(ksic_categories[current_biz_major].keys())
+        st.session_state.input_biz_middle = middle_keys[0] if middle_keys else ""
+        if middle_keys:
+            minor_list = ksic_categories[current_biz_major][middle_keys[0]]
+            st.session_state.input_biz_minor = minor_list[0] if minor_list else ""
+    
+    # 중분류 목록
+    middle_keys = list(ksic_categories.get(current_biz_major, {}).keys())
     
     with col_info1:
-        company_name = st.text_input("🏢 진단 기업명", value=st.session_state.company_name, placeholder="예:Growth파이낸스", key="input_co_name")
+        company_name = st.text_input("🏢 진단 기업명", value=st.session_state.company_name, placeholder="예:주식회사 알파브라더스", key="input_co_name")
         
-        # 업종: 업태/업종코드 선택
-        col_biz1, col_biz2 = st.columns(2)
+        # 업종: 대분류/중분류/소분류 선택
+        col_biz1, col_biz2, col_biz3 = st.columns(3)
         with col_biz1:
-            biz_major = st.selectbox("🏭 업태", valid_keys, index=valid_keys.index(current_biz_major), key="input_biz_major")
+            biz_major = st.selectbox("🏭 대분류", valid_keys, index=valid_keys.index(current_biz_major), key="input_biz_major")
         with col_biz2:
-            biz_minor = st.selectbox("🏭 업종코드", ksic_categories[biz_major], key="input_biz_minor")
-        biz_type = f"{biz_major} > {biz_minor}"
+            middle_keys = list(ksic_categories[biz_major].keys())
+            current_middle = st.session_state.get('input_biz_middle')
+            if current_middle not in middle_keys:
+                current_middle = middle_keys[0] if middle_keys else ""
+            middle_index = middle_keys.index(current_middle) if current_middle in middle_keys else 0
+            biz_middle = st.selectbox("🏭 중분류", middle_keys, index=middle_index, key="input_biz_middle")
+        with col_biz3:
+            minor_list = ksic_categories[biz_major].get(biz_middle, [])
+            current_minor = st.session_state.get('input_biz_minor')
+            if current_minor not in minor_list:
+                current_minor = minor_list[0] if minor_list else ""
+            minor_index = minor_list.index(current_minor) if current_minor in minor_list else 0
+            biz_minor = st.selectbox("🏭 소분류", minor_list, index=minor_index, key="input_biz_minor")
+        biz_type = biz_minor  # 문서에는 소분류만 표시
         
         ceo_name = st.text_input("👤 대표자명", value=st.session_state.ceo_name, placeholder="예:홍길동", key="input_ceo_name")
         biz_start_date = st.text_input("📅 사업개시일", value=st.session_state.biz_start_date, placeholder="예:2024-01-01", key="input_biz_start")
@@ -73,9 +110,19 @@ def render_company_info():
         address = st.text_input("📍 주소", value=st.session_state.address, placeholder="예:서울시 금천구 가산디지털1로", key="input_address")
         emp_count = st.text_input("👥 임직원 수 (숫자만)", value=st.session_state.emp_count, placeholder="예:10", key="input_emp_count")
         
-        # 활용시스템: 선택창
-        erp_options = ["이카운트", "더존위고", "더존비즈", "ERP", "ACS", "원스", "고려시스템", "기타"]
-        erp_system = st.selectbox("🖥️ 활용 시스템", erp_options, index=erp_options.index(st.session_state.erp_system) if st.session_state.erp_system in erp_options else 0, key="input_erp")
+        # 활용시스템: 다중 선택 + 기타 직접 입력
+        erp_options = ["이카운트", "더존위하고", "더존비즈온", "기타"]
+        current_erp = st.session_state.get('erp_system', [])
+        if isinstance(current_erp, str):
+            current_erp = [current_erp] if current_erp else []
+        
+        erp_system = st.multiselect("🖥️ 활용 시스템 (다중 선택 가능)", erp_options, default=current_erp, key="input_erp")
+        
+        # 기타 선택 시 직접 입력
+        if "기타" in erp_system:
+            erp_etc = st.text_input("🖥️ 기타 시스템 직접 입력", value=st.session_state.get('erp_etc', ''), placeholder="시스템명 입력", key="input_erp_etc")
+            if erp_etc:
+                erp_system = [e if e != "기타" else erp_etc for e in erp_system]
     
     return {
         'company_name': company_name,

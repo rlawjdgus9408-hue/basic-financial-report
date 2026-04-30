@@ -6,7 +6,7 @@ import streamlit as st
 def render_diagnosis():
     """사전 진단 및 관리 방향성 렌더링"""
     st.markdown("---")
-    st.markdown("### 4. 사전 진단 및 관리 방향성")
+    st.markdown("### 2. 사전 진단 및 관리 방향성")
     
     questions = [
         "재무성과(손익/자금 등) 현황 분석/보고(Report)를 매월 받으십니까?",

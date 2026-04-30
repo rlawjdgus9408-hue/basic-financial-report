@@ -18,3 +18,8 @@ Thumbs.db
 
 # Excel temp
 ~$*.xlsx
+
+# 민감 정보 (API 키 등)
+config.json
+.env
+*.secret
