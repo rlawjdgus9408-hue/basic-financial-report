@@ -9,8 +9,12 @@ def render_file_upload():
     """자료 업로드 렌더링"""
     st.markdown("### 3. 자료 업로드")
     col_up1, col_up2 = st.columns(2)
-    uploaded_file = col_up1.file_uploader("재무진단 엑셀(RAW) 업로드", type=["xlsx"])
-    template_file = col_up2.file_uploader("워드 템플릿(.docx) 업로드", type=["docx"])
+    with col_up1:
+        st.markdown("**재무진단 엑셀(RAW)**")
+        uploaded_file = st.file_uploader("재무진단 엑셀 업로드", type=["xlsx"], label_visibility="collapsed")
+    with col_up2:
+        st.markdown("**워드 템플릿 (.docx)**")
+        template_file = st.file_uploader("워드 템플릿 업로드", type=["docx"], label_visibility="collapsed")
     
     df_bs = None
     df_is = None
@@ -33,7 +37,8 @@ def render_file_upload():
                 
                 def get_clean_data(source_df, start, end=None):
                     subset = source_df.iloc[start:end].copy()
-                    name_data = subset.iloc[:, 0:3].fillna("").astype(str)
+                    name_col_end = min(year_cols_dict.keys())
+                    name_data = subset.iloc[:, 0:name_col_end].fillna("").astype(str)
                     for col in name_data.columns:
                         name_data[col] = name_data[col].replace(['0', '0.0', 'nan', 'None'], '')
                     subset['계정과목'] = name_data.agg(" ".join, axis=1).str.strip()
