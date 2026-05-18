@@ -230,7 +230,7 @@ _skip_types = (bytes, bytearray)
 _skip_prefixes = ('btn_', 'sidebar_', 'form_', '_load_done_')
 _save_state = {}
 for _k, _v in st.session_state.items():
-    if isinstance(_v, _skip_types):
+    if isinstance(_v, (_skip_types, bool)):  # 불리언은 버튼 상태 — 저장 불필요
         continue
     if any(_k.startswith(p) for p in _skip_prefixes):
         continue
@@ -255,6 +255,8 @@ _load_file = st.sidebar.file_uploader("📂 불러오기 (.json)", type=["json"]
 if _load_file is not None and not st.session_state.get('_load_done_' + _load_file.name):
     _loaded = json.loads(_load_file.read().decode('utf-8'))
     for _k, _v in _loaded.items():
+        if isinstance(_v, bool):
+            continue
         if any(_k.startswith(p) for p in ('btn_', 'sidebar_', 'form_', '_load_done_')):
             continue
         try:
