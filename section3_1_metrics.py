@@ -71,22 +71,22 @@ def calculate_bs_metrics(bs_accounts, is_accounts, years):
     metrics = {}
     for yr in years:
         m = {}
-        ca  = bs_accounts.get('유동자산', {})
-        cl  = bs_accounts.get('유동부채', {})
-        inv = bs_accounts.get('재고자산', {})
-        cash = bs_accounts.get('현금및현금성자산', {})
-        liab = bs_accounts.get('부채총계', {})
-        eq   = bs_accounts.get('자본총계', {})
-        ast  = bs_accounts.get('자산총계', {})
-        nca  = bs_accounts.get('비유동자산', {})
-        ar   = bs_accounts.get('매출채권', {})
-        rev  = is_accounts.get('매출액', {})
-        cogs = is_accounts.get('매출원가', {})
+        ca   = bs_accounts.get('유동자산') or {}
+        cl   = bs_accounts.get('유동부채') or {}
+        inv  = bs_accounts.get('재고자산') or {}
+        cash = bs_accounts.get('현금및현금성자산') or {}
+        liab = bs_accounts.get('부채총계') or {}
+        eq   = bs_accounts.get('자본총계') or {}
+        tot_ast = bs_accounts.get('자산총계') or {}
+        nca  = bs_accounts.get('비유동자산') or {}
+        ar   = bs_accounts.get('매출채권') or {}
+        rev  = is_accounts.get('매출액') or {}
+        cogs = is_accounts.get('매출원가') or {}
 
-        cl_v  = cl.get(yr, 0)
-        ca_v  = ca.get(yr, 0)
-        eq_v  = eq.get(yr, 0)
-        ast_v = ast.get(yr, 0)
+        cl_v    = cl.get(yr, 0)
+        ca_v    = ca.get(yr, 0)
+        eq_v    = eq.get(yr, 0)
+        ast_v   = tot_ast.get(yr, 0)
 
         if ca and cl and cl_v:
             m['유동비율']    = round(ca_v / cl_v * 100, 2)
@@ -96,7 +96,7 @@ def calculate_bs_metrics(bs_accounts, is_accounts, years):
             m['현금비율']    = round(cash.get(yr, 0) / cl_v * 100, 2)
         if eq and eq_v:
             m['부채비율']    = round(liab.get(yr, 0) / eq_v * 100, 2)
-        if ast and ast_v:
+        if tot_ast and ast_v:
             m['자기자본비율']   = round(eq_v / ast_v * 100, 2)
             m['비유동자산비율'] = round(nca.get(yr, 0) / ast_v * 100, 2) if nca else None
         if inv and ca_v:
@@ -105,7 +105,7 @@ def calculate_bs_metrics(bs_accounts, is_accounts, years):
             m['매출채권회전율'] = round(rev.get(yr, 0) / ar.get(yr, 0), 2)
         if inv and cogs and inv.get(yr, 0):
             m['재고자산회전율'] = round(cogs.get(yr, 0) / inv.get(yr, 0), 2)
-        if rev and ast and ast_v:
+        if rev and tot_ast and ast_v:
             m['총자산회전율'] = round(rev.get(yr, 0) / ast_v, 2)
 
         metrics[yr] = {k: v for k, v in m.items() if v is not None}
@@ -116,12 +116,12 @@ def calculate_is_metrics(is_accounts, years):
     metrics = {}
     for yr in years:
         m = {}
-        rev   = is_accounts.get('매출액', {})
-        cogs  = is_accounts.get('매출원가', {})
-        gross = is_accounts.get('매출총이익', {})
-        op    = is_accounts.get('영업이익', {})
-        net   = is_accounts.get('당기순이익', {})
-        sga   = is_accounts.get('판매관리비', {})
+        rev   = is_accounts.get('매출액') or {}
+        cogs  = is_accounts.get('매출원가') or {}
+        gross = is_accounts.get('매출총이익') or {}
+        op    = is_accounts.get('영업이익') or {}
+        net   = is_accounts.get('당기순이익') or {}
+        sga   = is_accounts.get('판매관리비') or {}
         rev_v = rev.get(yr, 0)
 
         if rev_v:
@@ -153,24 +153,24 @@ def calculate_common_metrics(bs_accounts, is_accounts, years):
     metrics = {}
     for yr in years:
         m = {}
-        ast  = bs_accounts.get('자산총계', {})
-        eq   = bs_accounts.get('자본총계', {})
-        liab = bs_accounts.get('부채총계', {})
-        rev  = is_accounts.get('매출액', {})
-        net  = is_accounts.get('당기순이익', {})
-        op   = is_accounts.get('영업이익', {})
-        cl   = bs_accounts.get('유동부채', {})
-        cash = bs_accounts.get('현금및현금성자산', {})
-        cap  = bs_accounts.get('자본금', {})
-        opex = is_accounts.get('영업외비용', {})
+        tot_ast = bs_accounts.get('자산총계') or {}
+        eq      = bs_accounts.get('자본총계') or {}
+        liab    = bs_accounts.get('부채총계') or {}
+        rev     = is_accounts.get('매출액') or {}
+        net     = is_accounts.get('당기순이익') or {}
+        op      = is_accounts.get('영업이익') or {}
+        cl      = bs_accounts.get('유동부채') or {}
+        cash    = bs_accounts.get('현금및현금성자산') or {}
+        cap     = bs_accounts.get('자본금') or {}
+        opex    = is_accounts.get('영업외비용') or {}
 
-        ast_v = ast.get(yr, 0)
+        ast_v = tot_ast.get(yr, 0)
         eq_v  = eq.get(yr, 0)
 
-        if net and ast and ast_v: m['ROA']  = round(net.get(yr, 0) / ast_v * 100, 2)
-        if net and eq  and eq_v:  m['ROE']  = round(net.get(yr, 0) / eq_v  * 100, 2)
+        if net and tot_ast and ast_v: m['ROA']  = round(net.get(yr, 0) / ast_v * 100, 2)
+        if net and eq      and eq_v:  m['ROE']  = round(net.get(yr, 0) / eq_v  * 100, 2)
         ic = ast_v - cl.get(yr, 0)
-        if op and ast and ic:     m['ROIC'] = round(op.get(yr, 0)  / ic    * 100, 2)
+        if op and tot_ast and ic:     m['ROIC'] = round(op.get(yr, 0)  / ic    * 100, 2)
         if cap and net:
             shares = cap.get(yr, 0) / 1000
             if shares > 0: m['EPS'] = round(net.get(yr, 0) / shares, 0)
@@ -178,9 +178,9 @@ def calculate_common_metrics(bs_accounts, is_accounts, years):
             m['부채대비현금비율'] = round(cash.get(yr, 0) / liab.get(yr, 0) * 100, 2)
         if op and opex and opex.get(yr, 0):
             m['이자보상배율'] = round(op.get(yr, 0) / abs(opex.get(yr, 0)), 2)
-        if rev and eq and eq_v:   m['자본회전율']       = round(rev.get(yr, 0) / eq_v  , 2)
-        if op  and ast and ast_v: m['자산대비영업이익률'] = round(op.get(yr, 0)  / ast_v * 100, 2)
-        if op  and eq  and eq_v:  m['자본대비영업이익률'] = round(op.get(yr, 0)  / eq_v  * 100, 2)
+        if rev and eq      and eq_v:  m['자본회전율']       = round(rev.get(yr, 0) / eq_v  , 2)
+        if op  and tot_ast and ast_v: m['자산대비영업이익률'] = round(op.get(yr, 0)  / ast_v * 100, 2)
+        if op  and eq      and eq_v:  m['자본대비영업이익률'] = round(op.get(yr, 0)  / eq_v  * 100, 2)
 
         metrics[yr] = {k: v for k, v in m.items() if v is not None}
     return metrics
