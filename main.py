@@ -209,14 +209,7 @@ st.sidebar.markdown("---")
 
 st.sidebar.subheader("작업")
 
-if st.sidebar.button("전체 재작성", use_container_width=True):
-    for key in list(st.session_state.keys()):
-        if key not in ['selected_indicators']:
-            del st.session_state[key]
-    st.rerun()
-
 if st.sidebar.button("모두 지우기", use_container_width=True):
-    st.session_state.clear()
     st.rerun()
 
 if st.sidebar.button("다시 실행", use_container_width=True):
