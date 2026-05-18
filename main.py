@@ -213,6 +213,7 @@ if st.sidebar.button("모두 지우기", use_container_width=True):
     st.rerun()
 
 if st.sidebar.button("다시 실행", use_container_width=True):
+    st.session_state.clear()
     st.rerun()
 
 st.sidebar.markdown("---")
