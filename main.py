@@ -252,7 +252,10 @@ _load_file = st.sidebar.file_uploader("📂 불러오기 (.json)", type=["json"]
 if _load_file is not None and not st.session_state.get('_load_done_' + _load_file.name):
     _loaded = json.loads(_load_file.read().decode('utf-8'))
     for _k, _v in _loaded.items():
-        st.session_state[_k] = _v
+        try:
+            st.session_state[_k] = _v
+        except Exception:
+            pass
     st.session_state['_load_done_' + _load_file.name] = True
     st.sidebar.success("불러오기 완료!")
     st.rerun()
