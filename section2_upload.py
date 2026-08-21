@@ -4,6 +4,9 @@ Section 2: 자료 업로드
 import streamlit as st
 import pandas as pd
 import re
+from pathlib import Path
+
+_DEFAULT_TEMPLATE = Path(__file__).parent / "[그로스파이낸스]_기초재무진단결과_템플릿.docx"
 
 def render_file_upload():
     """자료 업로드 렌더링"""
@@ -13,8 +16,16 @@ def render_file_upload():
         st.markdown("**재무진단 엑셀(RAW)**")
         uploaded_file = st.file_uploader("재무진단 엑셀 업로드", type=["xlsx"], label_visibility="collapsed")
     with col_up2:
-        st.markdown("**워드 템플릿 (.docx)**")
-        template_file = st.file_uploader("워드 템플릿 업로드", type=["docx"], label_visibility="collapsed")
+        st.markdown("**워드 템플릿 (.docx)** — 기본 템플릿 자동 사용")
+        custom_template = st.file_uploader("커스텀 템플릿으로 교체 (선택)", type=["docx"], label_visibility="collapsed")
+        if custom_template:
+            template_file = custom_template
+        elif _DEFAULT_TEMPLATE.exists():
+            template_file = str(_DEFAULT_TEMPLATE)
+            st.caption(f"기본 템플릿 사용 중: {_DEFAULT_TEMPLATE.name}")
+        else:
+            template_file = None
+            st.warning("기본 템플릿 파일을 찾을 수 없습니다. 템플릿을 직접 업로드해주세요.")
     
     df_bs = None
     df_is = None

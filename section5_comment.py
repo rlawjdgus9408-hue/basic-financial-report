@@ -52,7 +52,7 @@ def render_comments():
         lines = []
         for line in _current.split('\n'):
             stripped = line.strip()
-            lines.append(('▣ ' + stripped) if stripped and not stripped.startswith('▣') else line)
+            lines.append(('▪ ' + stripped) if stripped and not stripped.startswith('▪') else line)
         _bulleted = '\n'.join(lines)
         if _bulleted != _current:
             st.session_state['txt_exec'] = _bulleted
@@ -62,11 +62,11 @@ def render_comments():
         value=st.session_state.get('exec_summary', ''),
         height=200,
         key="txt_exec",
-        help="입력 후 커서를 벗어나면 각 문단 앞에 ▣ 글머리가 자동으로 추가됩니다."
+        help="입력 후 커서를 벗어나면 각 문단 앞에 ▪ 글머리가 자동으로 추가됩니다."
     )
 
     char_count = len(exec_summary) if exec_summary else 0
-    st.caption(f"글자수: {char_count}/2000자  |  커서 이동 시 ▣ 글머리 자동 추가")
+    st.caption(f"글자수: {char_count}/2000자  |  커서 이동 시 ▪ 글머리 자동 추가")
     if char_count > 2000:
         st.warning("A4 1장 기준(2000자)을 초과했습니다.")
 

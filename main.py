@@ -139,7 +139,11 @@ section[data-testid="stSidebar"] > div > div > button {
     justify-content: flex-start !important;
 }
 [data-testid="stSidebar"] .stButton > button p,
-[data-testid="stSidebar"] [data-testid="stDownloadButton"] > button p {
+[data-testid="stSidebar"] .stButton > button div,
+[data-testid="stSidebar"] .stButton > button span,
+[data-testid="stSidebar"] [data-testid="stDownloadButton"] > button p,
+[data-testid="stSidebar"] [data-testid="stDownloadButton"] > button div,
+[data-testid="stSidebar"] [data-testid="stDownloadButton"] > button span {
     text-align: left !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover,
@@ -306,6 +310,7 @@ score = 0
 selected_dirs = []
 dir_etc = ''
 selected_mats = []
+exec_summary = st.session_state.get('txt_exec', st.session_state.get('exec_summary', ''))
 
 # If a nav target is set, render only that section (quick jump view).
 nav_target = st.session_state.get('nav_target', '')
@@ -356,24 +361,26 @@ else:
         st.session_state['common_metrics'] = common_metrics
         st.session_state['years'] = years
 
-# 5. 종합의견
-st.markdown('<div id="sec5"></div>', unsafe_allow_html=True)
-exec_summary = render_comments()
+    st.markdown("---")
 
-st.markdown("---")
+    # 5. 종합의견
+    st.markdown('<div id="sec5"></div>', unsafe_allow_html=True)
+    exec_summary = render_comments()
 
-# 6. 최종보고서 생성
-st.markdown('<div id="sec6"></div>', unsafe_allow_html=True)
-render_report_generation(
-    company_info=company_info,
-    template_file=template_file,
-    check_results=check_results,
-    score=score,
-    selected_dirs=selected_dirs,
-    dir_etc=dir_etc,
-    selected_mats=selected_mats,
-    exec_summary=exec_summary,
-)
+    st.markdown("---")
+
+    # 6. 최종보고서 생성
+    st.markdown('<div id="sec6"></div>', unsafe_allow_html=True)
+    render_report_generation(
+        company_info=company_info,
+        template_file=template_file,
+        check_results=check_results,
+        score=score,
+        selected_dirs=selected_dirs,
+        dir_etc=dir_etc,
+        selected_mats=selected_mats,
+        exec_summary=exec_summary,
+    )
 
 # 사이드바 보고서 생성 (모든 변수가 정의된 후 실행)
 st.sidebar.markdown("---")

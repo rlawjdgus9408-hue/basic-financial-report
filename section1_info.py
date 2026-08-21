@@ -68,7 +68,7 @@ def render_company_info():
         if 'biz_type_mode' not in st.session_state:
             st.session_state.biz_type_mode = 'select'
 
-        col_biz_label, col_biz_toggle = st.columns([4, 1])
+        col_biz_label, col_biz_toggle = st.columns([3, 2])
         with col_biz_label:
             st.markdown("**업종**")
         with col_biz_toggle:
