@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 
 
-_KSIC_FILE = Path(__file__).parent / "업종코드-표준산업분류 연계표.xlsx"
+_KSIC_FILE = Path(__file__).parent.parent / "assets" / "reference" / "업종코드-표준산업분류 연계표.xlsx"
 
 def _clear_input(widget_key):
     st.session_state[widget_key] = ''

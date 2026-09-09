@@ -7,7 +7,7 @@ import re
 import io
 from pathlib import Path
 
-_DEFAULT_TEMPLATE = Path(__file__).parent / "[그로스파이낸스]_기초재무진단결과_템플릿.docx"
+_DEFAULT_TEMPLATE = Path(__file__).parent.parent / "assets" / "templates" / "[그로스파이낸스]_기초재무진단결과_템플릿.docx"
 
 @st.cache_data(show_spinner=False)
 def _parse_raw_excel(file_bytes):

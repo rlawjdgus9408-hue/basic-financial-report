@@ -374,13 +374,13 @@ def init_session_state():
 init_session_state()
 
 # 각 섹션 import
-from section1_info import render_company_info
-from section2_upload import render_file_upload
-from section3_review import render_data_review
-from section3_1_metrics import render_financial_metrics
-from section4_diagnosis import render_diagnosis
-from section5_comment import render_comments
-from section6_report import render_report_generation
+from sections.info import render_company_info
+from sections.upload import render_file_upload
+from sections.review import render_data_review
+from sections.metrics import render_financial_metrics
+from sections.diagnosis import render_diagnosis
+from sections.comment import render_comments
+from sections.report import render_report_generation
 
 def _clear_nav():
     st.session_state['nav_target'] = ''

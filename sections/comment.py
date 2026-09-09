@@ -9,9 +9,9 @@ from pathlib import Path
 import streamlit as st
 import pandas as pd
 
-_CONFIG_FILE = Path(__file__).parent / "config.json"
-_USER_ICON = Path(__file__).parent / "assets" / "assistant_icon.svg"
-_GEMINI_ICON = Path(__file__).parent / "assets" / "gemini_icon.svg"
+_CONFIG_FILE = Path(__file__).parent.parent / "config.json"
+_USER_ICON = Path(__file__).parent.parent / "assets" / "icons" / "assistant_icon.svg"
+_GEMINI_ICON = Path(__file__).parent.parent / "assets" / "icons" / "gemini_icon.svg"
 _DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 
 
