@@ -25,7 +25,7 @@ html, body, [class*="css"], * {
 }
 
 /* Streamlit 아이콘 폰트가 일반 글자로 표시되지 않도록 복원 */
-[class*="material-icons"], [class*="material-symbols"] {
+[data-testid="stIconMaterial"], [class*="material-icons"], [class*="material-symbols"] {
     font-family: 'Material Symbols Rounded', 'Material Symbols Outlined',
                  'Material Icons', sans-serif !important;
 }
@@ -349,7 +349,7 @@ if _load_file is not None and not st.session_state.get('_load_done_' + _load_fil
     st.rerun()
 
 _header_company = st.session_state.get('input_co_name') or st.session_state.get('company_name')
-st.title(f"{_header_company if _header_company else ''}기초재무진단 보고서")
+st.title(f"{_header_company + ' ' if _header_company else ''}기초재무진단 보고서")
 
 # 세션 상태 초기화 함수
 def init_session_state():
