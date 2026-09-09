@@ -4,7 +4,6 @@
 """
 import streamlit as st
 import streamlit.components.v1 as _components
-import pandas as pd
 import io
 import json
 import time
@@ -23,6 +22,12 @@ st.markdown("""
 html, body, [class*="css"], * {
     font-family: 'Pretendard Variable', Pretendard, -apple-system,
                  BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif !important;
+}
+
+/* Streamlit 아이콘 폰트가 일반 글자로 표시되지 않도록 복원 */
+[class*="material-icons"], [class*="material-symbols"] {
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined',
+                 'Material Icons', sans-serif !important;
 }
 
 /* ── 기본 레이아웃 ── */
@@ -65,8 +70,6 @@ hr { border: none !important; border-top: 1.5px solid #F0F0F0 !important; margin
 
 /* ── 캡션 ── */
 .stCaption p, small { color: #898F91 !important; font-size: 12px !important; }
-
-/* ── 버튼 공통 ── */
 .stButton > button, [data-testid="stDownloadButton"] > button {
     border-radius: 4px !important;
     font-weight: 600 !important; font-size: 14px !important;
@@ -74,8 +77,6 @@ hr { border: none !important; border-top: 1.5px solid #F0F0F0 !important; margin
     transition: all 0.15s ease !important;
     width: 100% !important;
 }
-
-/* ── Primary 버튼 (선택됨) ── */
 .stButton > button[kind="primary"] {
     background-color: #FADB15 !important;
     color: #191919 !important; border: 2px solid #FADB15 !important;
@@ -83,8 +84,6 @@ hr { border: none !important; border-top: 1.5px solid #F0F0F0 !important; margin
 .stButton > button[kind="primary"]:hover {
     background-color: #F0CE00 !important; border-color: #F0CE00 !important;
 }
-
-/* ── Secondary 버튼 ── */
 .stButton > button[kind="secondary"] {
     background-color: #FFFFFF !important;
     color: #363636 !important; border: 1.5px solid #D5D5D5 !important;
@@ -93,13 +92,10 @@ hr { border: none !important; border-top: 1.5px solid #F0F0F0 !important; margin
     background-color: #FAFAFA !important;
     border-color: #FADB15 !important; color: #191919 !important;
 }
-
-/* ── 예/아니오 답변 버튼 (진단 섹션) ── */
 [data-testid="stHorizontalBlock"] .stButton > button {
     min-height: 58px !important;
     font-size: 15px !important; letter-spacing: 0.03em !important;
 }
-
 /* ── 사이드바 (항상 표시 + 스타일) ── */
 [data-testid="stSidebar"] {
     transform: translateX(0) !important;
@@ -151,17 +147,44 @@ section[data-testid="stSidebar"] > div > div > button {
     background-color: #FADB15 !important;
     border-color: #FADB15 !important; color: #191919 !important;
 }
-
-/* ── 프로그레스바 ── */
 .stProgress > div > div > div { background-color: #FADB15 !important; }
-
-/* ── 멀티셀렉트 태그 ── */
 .stMultiSelect [data-baseweb="tag"] {
     background-color: #FADB15 !important; color: #191919 !important;
 }
-
-/* ── 알림 박스 ── */
 .stAlert { border-radius: 4px !important; }
+.ai-model-label {
+    color: #9AA0A6 !important;
+    font-size: 11px !important;
+    text-align: right !important;
+    margin-top: 8px !important;
+}
+
+/* 입력창 안쪽 삭제 컨트롤 */
+[data-testid="stColumn"]:has(> [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"][class*="st-key-clear_"]) {
+    transform: translateX(-42px) !important;
+    margin-left: 0 !important;
+    z-index: 5 !important;
+    pointer-events: none !important;
+}
+[data-testid="stColumn"]:has(> [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"][class*="st-key-clear_"]) button {
+    min-height: 0 !important;
+    width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    color: #9AA0A6 !important;
+    background: transparent !important;
+    border: 0 !important;
+    pointer-events: auto !important;
+    font-size: 20px !important;
+    font-weight: 400 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+[data-testid="stColumn"]:has(> [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"][class*="st-key-clear_"]) button:hover {
+    color: #191919 !important;
+    background: transparent !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -194,30 +217,90 @@ _components.html("""
 </script>
 """, height=0)
 
-# 네비게이션 링크
-nav_items = [
-    ("1. 기업 상세 정보 입력", "sec1"),
-    ("2. 사전 진단 및 관리 방향성", "sec2"),
-    ("3. 자료 업로드", "sec3"),
-    ("4. 재무 데이터 검토", "sec4"),
-    ("5. 종합의견 및 분석 코멘트", "sec5"),
-    ("6. 최종보고서 생성", "sec6"),
-]
+# 사이드바 목차: 스크롤 위치에 따라 노란 인디케이터가 이동한다.
+_components.html("""
+<script>
+(function setupSidebarNavigation() {
+    const doc = window.parent.document;
+    const navId = 'growthfinance-sidebar-nav';
+    const labels = [
+        ['1. 기업 상세 정보 입력', 'sec1'],
+        ['2. 사전 진단 및 관리 방향성', 'sec2'],
+        ['3. 자료 업로드', 'sec3'],
+        ['4. 재무 데이터 검토', 'sec4'],
+        ['5. 종합의견 및 분석 코멘트', 'sec5'],
+        ['6. 최종보고서 생성', 'sec6']
+    ];
+    const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+    if (!sidebar) {
+        window.setTimeout(setupSidebarNavigation, 120);
+        return;
+    }
+    let nav = doc.getElementById(navId);
+    if (!nav) {
+        nav = doc.createElement('nav');
+        nav.id = navId;
+        nav.setAttribute('aria-label', '페이지 목차');
+        labels.forEach(function(item) {
+            const link = doc.createElement('button');
+            link.type = 'button';
+            link.textContent = item[0];
+            link.dataset.target = item[1];
+            link.addEventListener('click', function() {
+                const target = doc.getElementById(item[1]);
+                if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
+            });
+            nav.appendChild(link);
+        });
+        const sidebarContent = sidebar.querySelector('[data-testid="stSidebarContent"]');
+        if (sidebarContent) sidebarContent.prepend(nav);
+        else sidebar.prepend(nav);
+    }
 
-for label, key in nav_items:
-    if st.sidebar.button(label, key=f"nav_{key}", use_container_width=True):
-        st.session_state['nav_target'] = key
-        st.rerun()
-
-st.sidebar.markdown("---")
-
-st.sidebar.subheader("작업")
-
-if st.sidebar.button("모두 지우기", use_container_width=True):
-    st.rerun()
+    const sections = labels.map(function(item) { return doc.getElementById(item[1]); }).filter(Boolean);
+            if (sections.length !== labels.length) {
+        window.setTimeout(setupSidebarNavigation, 120);
+        return;
+    }
+    const links = Array.from(nav.querySelectorAll('button'));
+    function setActive(targetId) {
+        links.forEach(function(link) {
+            link.classList.toggle('active', link.dataset.target === targetId);
+        });
+    }
+    setActive(sections[0].id);
+    if (nav._sectionObserver) nav._sectionObserver.disconnect();
+    nav._sectionObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) setActive(entry.target.id);
+        });
+    }, {rootMargin: '-18% 0px -68% 0px', threshold: 0});
+    sections.forEach(function(section) { nav._sectionObserver.observe(section); });
+})();
+</script>
+<script>
+(function injectSidebarNavigationStyles() {
+    const doc = window.parent.document;
+    const styleId = 'growthfinance-sidebar-nav-styles';
+    if (doc.getElementById(styleId)) return;
+    const style = doc.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+        #growthfinance-sidebar-nav { position: relative; display: flex; flex-direction: column; gap: 2px; margin: 0 0 18px; padding: 4px 0 12px; }
+        #growthfinance-sidebar-nav::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: #E8E8E8; }
+        #growthfinance-sidebar-nav button { position: relative; appearance: none; width: 100%; min-height: 38px; padding: 8px 10px 8px 14px; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: #9AA0A6 !important; text-align: left; font-size: 12px !important; font-weight: 500 !important; line-height: 1.35; cursor: pointer; transition: color .24s ease, background-color .24s ease, transform .24s ease, padding-left .24s ease; }
+        #growthfinance-sidebar-nav button::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: #FADB15; transform: scaleY(0); transform-origin: center; transition: transform .3s cubic-bezier(.22, 1, .36, 1); }
+        #growthfinance-sidebar-nav button:hover { color: #191919 !important; transform: translateX(2px); }
+        #growthfinance-sidebar-nav button.active { color: #191919 !important; background: #FFFFFF !important; padding-left: 18px; font-weight: 700 !important; transform: scale(1.025); transform-origin: left center; }
+        #growthfinance-sidebar-nav button.active::before { transform: scaleY(1); }
+        @media (max-width: 640px) { #growthfinance-sidebar-nav { display: none; } }
+    `;
+    doc.head.appendChild(style);
+})();
+</script>
+""", height=0)
 
 if st.sidebar.button("다시 실행", use_container_width=True):
-    st.session_state.clear()
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -225,7 +308,7 @@ st.sidebar.subheader("임시저장")
 
 # 임시저장: 현재 세션 상태를 JSON으로 다운로드 (버튼/내부 위젯 key 제외)
 _skip_types = (bytes, bytearray)
-_skip_prefixes = ('btn_', 'sidebar_', 'form_', '_load_done_')
+_skip_prefixes = ('btn_', 'sidebar_', 'form_', 'ai_key_', '_load_done_')
 _save_state = {}
 for _k, _v in st.session_state.items():
     if isinstance(_v, (_skip_types, bool)):  # 불리언은 버튼 상태 — 저장 불필요
@@ -255,7 +338,7 @@ if _load_file is not None and not st.session_state.get('_load_done_' + _load_fil
     for _k, _v in _loaded.items():
         if isinstance(_v, bool):
             continue
-        if any(_k.startswith(p) for p in ('btn_', 'sidebar_', 'form_', '_load_done_')):
+        if any(_k.startswith(p) for p in ('btn_', 'sidebar_', 'form_', 'ai_key_', '_load_done_')):
             continue
         try:
             st.session_state[_k] = _v
@@ -265,7 +348,8 @@ if _load_file is not None and not st.session_state.get('_load_done_' + _load_fil
     st.sidebar.success("불러오기 완료!")
     st.rerun()
 
-st.title("그로스파이낸스 기초재무진단 보고서")
+_header_company = st.session_state.get('input_co_name') or st.session_state.get('company_name')
+st.title(f"{_header_company if _header_company else ''}기초재무진단 보고서")
 
 # 세션 상태 초기화 함수
 def init_session_state():
@@ -336,18 +420,22 @@ if nav_target:
 
 else:
     # 1. 기업 상세 정보 입력
+    st.markdown('<div id="sec1"></div>', unsafe_allow_html=True)
     company_info = render_company_info()
 
     st.markdown("---")
 
     # 2. 사전 진단 및 관리 방향성
+    st.markdown('<div id="sec2"></div>', unsafe_allow_html=True)
     check_results, score, selected_dirs, dir_etc, selected_mats = render_diagnosis()
 
     st.markdown("---")
 
     # 3. 자료 업로드
+    st.markdown('<div id="sec3"></div>', unsafe_allow_html=True)
     uploaded_file, template_file, df_bs, df_is, years = render_file_upload()
 
+    st.markdown('<div id="sec4"></div>', unsafe_allow_html=True)
     if uploaded_file and df_bs is not None and df_is is not None:
         # 4. 재무 데이터 검토
         render_data_review(df_bs, df_is)
@@ -440,7 +528,8 @@ if template_file:
 
         file_name_prefix = company_info.get('company_name', '') or "진단기업"
         st.session_state['report_bytes'] = output.getvalue()
-        st.session_state['report_filename'] = f"{file_name_prefix}_재무진단보고서.docx"
+        created_date = datetime.datetime.now().strftime('%Y%m%d')
+        st.session_state['report_filename'] = f"{file_name_prefix}_재무진단보고서_{created_date}.docx"
         st.session_state['report_company'] = file_name_prefix
         st.sidebar.success("보고서 생성 완료!")
 

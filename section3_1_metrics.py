@@ -65,6 +65,25 @@ def _metrics_df(metrics, indicators, years):
     return df.astype(str).replace({'nan': '-', 'None': '-'})
 
 
+def _indicator_buttons(prefix, indicators):
+    selected = []
+    for indicator in indicators:
+        state_key = f"doc_{prefix}_{indicator}"
+        is_selected = st.session_state.get(state_key, False)
+        label = f"선택됨  {indicator}" if is_selected else indicator
+        if st.button(
+            label,
+            key=f"indicator_btn_{prefix}_{indicator}",
+            type="primary" if is_selected else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state[state_key] = not is_selected
+            st.rerun()
+        if is_selected:
+            selected.append(indicator)
+    return selected
+
+
 # ── 지표 계산 ────────────────────────────────────────────────────────────────
 
 def calculate_bs_metrics(bs_accounts, is_accounts, years):
@@ -120,6 +139,7 @@ def calculate_is_metrics(is_accounts, years):
         cogs  = is_accounts.get('매출원가') or {}
         gross = is_accounts.get('매출총이익') or {}
         op    = is_accounts.get('영업이익') or {}
+        ebitda = is_accounts.get('EBITDA') or {}
         net   = is_accounts.get('당기순이익') or {}
         sga   = is_accounts.get('판매관리비') or {}
         rev_v = rev.get(yr, 0)
@@ -130,20 +150,20 @@ def calculate_is_metrics(is_accounts, years):
             if op:    m['영업이익률']   = round(op.get(yr, 0)    / rev_v * 100, 2)
             if net:   m['순이익률']     = round(net.get(yr, 0)   / rev_v * 100, 2)
             if cogs:  m['매출원가율']   = round(cogs.get(yr, 0)  / rev_v * 100, 2)
-            if op:    m['EBITDA마진']   = round(op.get(yr, 0)    / rev_v * 100, 2)
+            if ebitda: m['EBITDA마진'] = round(ebitda.get(yr, 0) / rev_v * 100, 2)
         if sga and cogs and cogs.get(yr, 0):
             m['비용구조비율'] = round(sga.get(yr, 0) / cogs.get(yr, 0) * 100, 2)
 
         idx = years.index(yr)
         if idx > 0:
             prev = years[idx - 1]
-            def _yoy(acc, key):
+            def _yoy(acc):
                 p = acc.get(prev, 0)
                 return round((acc.get(yr, 0) - p) / abs(p) * 100, 2) if p else None
-            if rev:   m['매출액증가율']  = _yoy(rev, 'rev')
-            if gross: m['총이익증가율']  = _yoy(gross, 'gross')
-            if op:    m['영업이익증가율'] = _yoy(op, 'op')
-            if net:   m['순이익증가율']  = _yoy(net, 'net')
+            if rev:   m['매출액증가율']  = _yoy(rev)
+            if gross: m['총이익증가율']  = _yoy(gross)
+            if op:    m['영업이익증가율'] = _yoy(op)
+            if net:   m['순이익증가율']  = _yoy(net)
 
         metrics[yr] = {k: v for k, v in m.items() if v is not None}
     return metrics
@@ -216,6 +236,7 @@ def render_financial_metrics(df_bs, df_is, years):
         '매출총이익': find_account(df_is, ['매출총이익', 'gross', '총이익'], years),
         '판매관리비': find_account(df_is, ['판매관리비', '판매비', '관리비', '운영비'], years),
         '영업이익':  find_account(df_is, ['영업이익', '운영이익', '본이익'], years),
+        'EBITDA':    find_account(df_is, ['EBITDA', '에비타'], years),
         '당기순이익': find_account(df_is, ['당기순이익', '순이익', '당기순손실'], years),
         '영업외비용': find_account(df_is, ['영업외비용', '금융비용', '이자비용'], years),
     }
@@ -235,19 +256,14 @@ def render_financial_metrics(df_bs, df_is, years):
                     st.session_state[f"doc_{prefix}_{ind}"] = False
             st.rerun()
 
-    col_doc1, col_doc2 = st.columns(2)
-    with col_doc1:
-        st.markdown("**BS 지표**")
-        selected_bs = [ind for ind in BS_INDICATORS
-                       if st.checkbox(ind, value=st.session_state.get(f"doc_bs_{ind}", False), key=f"doc_bs_{ind}")]
-    with col_doc2:
-        st.markdown("**IS 지표**")
-        selected_is = [ind for ind in IS_INDICATORS
-                       if st.checkbox(ind, value=st.session_state.get(f"doc_is_{ind}", False), key=f"doc_is_{ind}")]
+    st.markdown("**BS 지표**")
+    selected_bs = _indicator_buttons("bs", BS_INDICATORS)
+
+    st.markdown("**IS 지표**")
+    selected_is = _indicator_buttons("is", IS_INDICATORS)
 
     st.markdown("**공통 지표**")
-    selected_common = [ind for ind in COMMON_INDICATORS
-                       if st.checkbox(ind, value=st.session_state.get(f"doc_common_{ind}", False), key=f"doc_common_{ind}")]
+    selected_common = _indicator_buttons("common", COMMON_INDICATORS)
 
     st.session_state['selected_indicators'] = {'bs': selected_bs, 'is': selected_is, 'common': selected_common}
 

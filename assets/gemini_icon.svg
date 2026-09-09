@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Gemini">
+  <rect width="128" height="128" rx="24" fill="#ffffff"/>
+  <path d="M64 13c3.8 28.1 22.1 45.2 51 51-28.9 5.8-47.2 22.9-51 51-3.8-28.1-22.1-45.2-51-51 28.9-5.8 47.2-22.9 51-51Z" fill="#4285f4"/>
+  <path d="M64 13c3.8 28.1 22.1 45.2 51 51-28.9 5.8-47.2 22.9-51 51" fill="none" stroke="#a142f4" stroke-width="8" stroke-linecap="round"/>
+  <path d="M13 64c28.9-5.8 47.2-22.9 51-51" fill="none" stroke="#34a853" stroke-width="8" stroke-linecap="round"/>
+</svg>

@@ -31,7 +31,7 @@ def render_diagnosis():
             unsafe_allow_html=True
         )
 
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1, 1], gap="small")
         with col1:
             if st.button(
                 "예",
