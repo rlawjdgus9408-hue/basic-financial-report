@@ -2,43 +2,16 @@
 Section 5: 종합의견
 """
 import json
-import os
 import re
 from pathlib import Path
 
 import streamlit as st
 import pandas as pd
 
-_CONFIG_FILE = Path(__file__).parent.parent / "config.json"
+from sections.ai_client import configured_value, gemini_model
+
 _USER_ICON = Path(__file__).parent.parent / "assets" / "icons" / "assistant_icon.webp"
 _GEMINI_ICON = Path(__file__).parent.parent / "assets" / "icons" / "gemini_icon.svg"
-_DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
-
-
-def _configured_value(provider, key):
-    env_name = "GEMINI_API_KEY"
-    if key == "api_key":
-        try:
-            secret_value = st.secrets.get(env_name, "")
-        except Exception:
-            secret_value = ""
-        return secret_value or os.getenv(env_name, "")
-
-    try:
-        config = json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
-        for model_config in config.get("models", []):
-            if model_config.get("provider", "").lower() == provider.lower():
-                return model_config.get(key, model_config.get("apiKey", "") if key == "api_key" else "")
-    except (OSError, json.JSONDecodeError):
-        pass
-    return ""
-
-
-def _gemini_model():
-    configured_model = _configured_value("Gemini", "model")
-    if configured_model in {"", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.5-flash"}:
-        return _DEFAULT_GEMINI_MODEL
-    return configured_model
 
 
 def _financial_context():
@@ -93,8 +66,8 @@ def render_ai_comment_chat():
             if not _has_financial_data():
                 st.info("재무 엑셀을 업로드하면 재무지표를 바탕으로 더 정확한 분석을 받을 수 있습니다.")
 
-            model = _gemini_model()
-            configured_key = _configured_value("Gemini", "api_key")
+            model = gemini_model()
+            configured_key = configured_value("Gemini", "api_key")
             if configured_key:
                 api_key = configured_key
                 st.caption("Gemini API 키가 로컬 보안 설정에서 로드되었습니다.")

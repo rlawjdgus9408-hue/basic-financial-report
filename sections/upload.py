@@ -7,6 +7,8 @@ import re
 import io
 from pathlib import Path
 
+from sections.convert import render_raw_converter
+
 _DEFAULT_TEMPLATE = Path(__file__).parent.parent / "assets" / "templates" / "[그로스파이낸스]_기초재무진단결과_템플릿.docx"
 
 @st.cache_data(show_spinner=False)
@@ -56,9 +58,21 @@ def _parse_raw_excel(file_bytes):
 def render_file_upload():
     """자료 업로드 렌더링"""
     st.markdown("### 3. 자료 업로드")
+    template_file = str(_DEFAULT_TEMPLATE) if _DEFAULT_TEMPLATE.exists() else None
+
+    mode = st.radio(
+        "업로드 방식",
+        ["표준 RAW 엑셀", "다른 형식 파일 변환 (AI)"],
+        horizontal=True,
+        key="upload_mode",
+    )
+
+    if mode == "다른 형식 파일 변환 (AI)":
+        uploaded_file, df_bs, df_is, years = render_raw_converter()
+        return uploaded_file, template_file, df_bs, df_is, years
+
     st.markdown("**재무진단 엑셀(RAW)**")
     uploaded_file = st.file_uploader("재무진단 엑셀 업로드", type=["xlsx"], label_visibility="collapsed")
-    template_file = str(_DEFAULT_TEMPLATE) if _DEFAULT_TEMPLATE.exists() else None
 
     if not uploaded_file:
         return uploaded_file, template_file, None, None, []
