@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Assistant">
-  <rect width="128" height="128" rx="8" fill="#000000"/>
-  <path d="M91 36.5A45 45 0 1 0 96 83" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="square"/>
-  <path d="M67 76h28V48" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="square"/>
-  <path d="M72 76l23-28" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="square"/>
-</svg>
