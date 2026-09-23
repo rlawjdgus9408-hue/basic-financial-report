@@ -185,6 +185,41 @@ section[data-testid="stSidebar"] > div > div > button {
     color: #191919 !important;
     background: transparent !important;
 }
+
+/* ── 업로드 대기 스켈레톤 박스 ── */
+.gf-upload-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 160px; border: 1.5px dashed #D9D9D9; border-radius: 8px;
+    background: repeating-linear-gradient(135deg, #FAFAFA, #FAFAFA 10px, #F3F3F3 10px, #F3F3F3 20px);
+    color: #9AA0A6; font-size: 14px; font-weight: 700; letter-spacing: 0.02em;
+    margin-bottom: 14px;
+}
+.gf-upload-placeholder .gf-dot { animation: gf-blink 1.4s infinite; opacity: 0; }
+.gf-upload-placeholder .gf-dot:nth-child(2) { animation-delay: .2s; }
+.gf-upload-placeholder .gf-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes gf-blink { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+
+/* ── 사이드바 하단 고정 진행도 ── */
+[class*="st-key-gf_progress_dock"] {
+    position: sticky !important; bottom: 0 !important;
+    background: #F5F8FA !important;
+    padding: 12px 6px 6px !important; margin-top: 16px !important;
+    border-top: 1px solid #E8E8E8 !important; z-index: 30 !important;
+}
+.gf-progress-track {
+    width: 100%; height: 8px; background: #E8E8E8; border-radius: 4px;
+    overflow: hidden; position: relative;
+}
+.gf-progress-fill {
+    height: 100%; border-radius: 4px; background: linear-gradient(90deg, #FADB15, #F0CE00);
+    transition: width .6s cubic-bezier(.22, 1, .36, 1); position: relative; overflow: hidden;
+}
+.gf-progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.65) 45%, transparent 85%);
+    animation: gf-shimmer 1.7s linear infinite;
+}
+@keyframes gf-shimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -217,88 +252,25 @@ _components.html("""
 </script>
 """, height=0)
 
-# 사이드바 목차: 스크롤 위치에 따라 노란 인디케이터가 이동한다.
-_components.html("""
-<script>
-(function setupSidebarNavigation() {
-    const doc = window.parent.document;
-    const navId = 'growthfinance-sidebar-nav';
-    const labels = [
-        ['1. 기업 상세 정보 입력', 'sec1'],
-        ['2. 사전 진단 및 관리 방향성', 'sec2'],
-        ['3. 자료 업로드', 'sec3'],
-        ['4. 재무 데이터 검토', 'sec4'],
-        ['5. 종합의견 및 분석 코멘트', 'sec5'],
-        ['6. 최종보고서 생성', 'sec6']
-    ];
-    const sidebar = doc.querySelector('[data-testid="stSidebar"]');
-    if (!sidebar) {
-        window.setTimeout(setupSidebarNavigation, 120);
-        return;
-    }
-    let nav = doc.getElementById(navId);
-    if (!nav) {
-        nav = doc.createElement('nav');
-        nav.id = navId;
-        nav.setAttribute('aria-label', '페이지 목차');
-        labels.forEach(function(item) {
-            const link = doc.createElement('button');
-            link.type = 'button';
-            link.textContent = item[0];
-            link.dataset.target = item[1];
-            link.addEventListener('click', function() {
-                const target = doc.getElementById(item[1]);
-                if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
-            });
-            nav.appendChild(link);
-        });
-        const sidebarContent = sidebar.querySelector('[data-testid="stSidebarContent"]');
-        if (sidebarContent) sidebarContent.prepend(nav);
-        else sidebar.prepend(nav);
-    }
+# 사이드바 목차: 클릭 시 해당 단계로 즉시 이동(자유 이동 가능)
+STEP_LABELS = [
+    "1. 기업 상세 정보 입력",
+    "2. 사전 진단 및 관리 방향성",
+    "3. 자료 업로드",
+    "4. 재무 데이터 검토",
+    "5. 종합의견 및 분석 코멘트",
+    "6. 최종보고서 생성",
+]
+TOTAL_WIZARD_STEPS = 5  # 진행도/설문 흐름은 1~5단계 기준 (6단계는 최종 생성 화면)
 
-    const sections = labels.map(function(item) { return doc.getElementById(item[1]); }).filter(Boolean);
-            if (sections.length !== labels.length) {
-        window.setTimeout(setupSidebarNavigation, 120);
-        return;
-    }
-    const links = Array.from(nav.querySelectorAll('button'));
-    function setActive(targetId) {
-        links.forEach(function(link) {
-            link.classList.toggle('active', link.dataset.target === targetId);
-        });
-    }
-    setActive(sections[0].id);
-    if (nav._sectionObserver) nav._sectionObserver.disconnect();
-    nav._sectionObserver = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-            if (entry.isIntersecting) setActive(entry.target.id);
-        });
-    }, {rootMargin: '-18% 0px -68% 0px', threshold: 0});
-    sections.forEach(function(section) { nav._sectionObserver.observe(section); });
-})();
-</script>
-<script>
-(function injectSidebarNavigationStyles() {
-    const doc = window.parent.document;
-    const styleId = 'growthfinance-sidebar-nav-styles';
-    if (doc.getElementById(styleId)) return;
-    const style = doc.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-        #growthfinance-sidebar-nav { position: relative; display: flex; flex-direction: column; gap: 2px; margin: 0 0 18px; padding: 4px 0 12px; }
-        #growthfinance-sidebar-nav::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: #E8E8E8; }
-        #growthfinance-sidebar-nav button { position: relative; appearance: none; width: 100%; min-height: 38px; padding: 8px 10px 8px 14px; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: #9AA0A6 !important; text-align: left; font-size: 12px !important; font-weight: 500 !important; line-height: 1.35; cursor: pointer; transition: color .24s ease, background-color .24s ease, transform .24s ease, padding-left .24s ease; }
-        #growthfinance-sidebar-nav button::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: #FADB15; transform: scaleY(0); transform-origin: center; transition: transform .3s cubic-bezier(.22, 1, .36, 1); }
-        #growthfinance-sidebar-nav button:hover { color: #191919 !important; transform: translateX(2px); }
-        #growthfinance-sidebar-nav button.active { color: #191919 !important; background: #FFFFFF !important; padding-left: 18px; font-weight: 700 !important; transform: scale(1.025); transform-origin: left center; }
-        #growthfinance-sidebar-nav button.active::before { transform: scaleY(1); }
-        @media (max-width: 640px) { #growthfinance-sidebar-nav { display: none; } }
-    `;
-    doc.head.appendChild(style);
-})();
-</script>
-""", height=0)
+st.sidebar.markdown('<div style="font-size:11px;font-weight:700;color:#898F91;text-transform:uppercase;letter-spacing:.08em;margin:4px 0 6px;">목차</div>', unsafe_allow_html=True)
+for _i, _label in enumerate(STEP_LABELS, start=1):
+    _is_active_step = st.session_state.get('current_step', 1) == _i
+    if st.sidebar.button(_label, key=f"navbtn_{_i}", use_container_width=True,
+                          type="primary" if _is_active_step else "secondary"):
+        st.session_state['current_step'] = _i
+        st.rerun()
+st.sidebar.markdown("---")
 
 if st.sidebar.button("다시 실행", use_container_width=True):
     st.rerun()
@@ -354,6 +326,7 @@ st.title(f"{_header_company + ' ' if _header_company else ''}기초재무진단 
 # 세션 상태 초기화 함수
 def init_session_state():
     defaults = {
+        'current_step': 1,
         'company_name': '',
         'biz_type': '',
         'ceo_name': '',
@@ -382,11 +355,99 @@ from sections.diagnosis import render_diagnosis
 from sections.comment import render_comments
 from sections.report import render_report_generation
 
-def _clear_nav():
-    st.session_state['nav_target'] = ''
+# ── 설문조사형 단계 이동 도우미 ────────────────────────────────────────────────
+STEP_INTROS = {
+    1: "안녕하세요, 그로스파이낸스입니다 👋<br>기초재무진단보고서 작성을 위한 <b>기본정보</b>를 입력해 주세요.",
+    2: "귀사의 현재 재무·경영 관리 수준을 파악하기 위한 <b>설문 단계</b>입니다.<br><br>"
+       "1. 각 항목에 대해 <b>예/아니오 중 하나</b>를 선택해 주세요.<br>"
+       "2. 재무관리를 하시는 <b>목적(방향성)</b>을 선택해 주시고, 해당 사항이 없다면 <b>기타 항목에 직접 작성</b>해 주세요.<br>"
+       "3. 현재 <b>보유하신 회사 자료</b>도 선택해 주세요.",
+    3: "<b>표준 재무제표(재무상태표) 및 손익계산서</b> 등의 자료를 업로드해 주세요. "
+       "다른 파일 형식이어도 상관없습니다 — AI가 표준 양식으로 자동 변환해 드려요.",
+    4: "업로드하신 자료를 바탕으로 자동 추출된 <b>재무 데이터와 지표</b>를 확인해 주세요.",
+    5: "마지막 입력 단계입니다! 지금까지의 내용을 바탕으로 <b>종합의견</b>을 작성해 주세요.",
+}
 
 
-# Default values so every variable is defined regardless of which nav branch runs
+def render_step_intro(step):
+    text = STEP_INTROS.get(step)
+    if not text:
+        return
+    st.markdown(f"""
+    <div style="display:flex; gap:12px; align-items:flex-start;
+                background:#FAFAFA; border:1px solid #F0F0F0; border-left:4px solid #FADB15;
+                border-radius:0 8px 8px 0; padding:14px 18px; margin-bottom:22px;">
+        <div style="flex-shrink:0; width:30px; height:30px; border-radius:50%; background:#FADB15;
+                    display:flex; align-items:center; justify-content:center; font-size:15px;">💬</div>
+        <div style="font-size:14px; line-height:1.6; color:#363636; padding-top:4px;">{text}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def _progress_message(percent):
+    remaining = 100 - percent
+    if percent >= 100:
+        return "모든 입력이 완료되었습니다! 🎉"
+    if percent >= 70:
+        return "거의 다 완료했어요! 🙌"
+    if percent >= 50:
+        return f"절반 넘게 진행했어요! {remaining}% 남았어요"
+    if percent > 0:
+        return f"{remaining}% 남았어요"
+    return "입력을 시작해 주세요"
+
+
+def render_sidebar_progress(step, total=TOTAL_WIZARD_STEPS):
+    """사이드바 하단에 고정(sticky)되는 애니메이션 진행도 바.
+    (본문 하단 고정은 사이드바의 '보고서 생성' 버튼 등과 겹치는 문제가 있어,
+     겹침 없이 항상 보이는 사이드바 하단 고정 방식을 사용한다.)
+    진행도는 '완료한 단계' 기준이므로 현재 단계 진입 시점에는 아직 반영하지 않는다.
+    (예: 1단계 진입 시 0% → 1단계를 마치고 2단계로 넘어가면 20%)"""
+    percent = int(round((step - 1) / total * 100))
+    message = _progress_message(percent)
+    with st.sidebar.container(key="gf_progress_dock"):
+        st.markdown(f"""
+        <div style="font-size:11px; font-weight:700; color:#9AA0A6; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">진행도</div>
+        <div style="font-size:12px; font-weight:600; color:#363636; margin-bottom:7px;">{message}</div>
+        <div class="gf-progress-track">
+            <div class="gf-progress-fill" style="width:{percent}%;"></div>
+        </div>
+        <div style="text-align:right; font-size:11px; color:#9AA0A6; margin-top:5px;">{step} / {total} 단계 · {percent}%</div>
+        """, unsafe_allow_html=True)
+
+
+def render_upload_placeholder(tab_labels=None, height=160):
+    """자료 업로드 전, 실제 표/지표가 나올 자리를 채우는 스켈레톤 placeholder."""
+    def _box():
+        st.markdown(f"""
+        <div class="gf-upload-placeholder" style="min-height:{height}px;">
+            <span>Uploading<span class="gf-dot">.</span><span class="gf-dot">.</span><span class="gf-dot">.</span></span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if tab_labels:
+        for tab in st.tabs(tab_labels):
+            with tab:
+                _box()
+    else:
+        _box()
+
+
+def render_step_nav(step, total=TOTAL_WIZARD_STEPS):
+    col_prev, col_next = st.columns([1, 2])
+    with col_prev:
+        if step > 1:
+            if st.button("← 이전 단계", key=f"btn_prev_{step}", use_container_width=True):
+                st.session_state['current_step'] = step - 1
+                st.rerun()
+    with col_next:
+        next_label = "다음 단계로 →" if step < total else "입력 완료, 보고서 생성하러 가기 →"
+        if st.button(next_label, key=f"btn_next_{step}", type="primary", use_container_width=True):
+            st.session_state['current_step'] = step + 1
+            st.rerun()
+
+
+# Default values so every variable is defined regardless of which step is active
 company_info = {}
 template_file = None
 check_results = []
@@ -394,71 +455,70 @@ score = 0
 selected_dirs = []
 dir_etc = ''
 selected_mats = []
+uploaded_file = None
+df_bs = df_is = None
+years = []
 exec_summary = st.session_state.get('txt_exec', st.session_state.get('exec_summary', ''))
 
-# If a nav target is set, render only that section (quick jump view).
-nav_target = st.session_state.get('nav_target', '')
-if nav_target:
-    st.sidebar.button("전체보기", on_click=_clear_nav, use_container_width=True)
-    if nav_target == 'sec1':
-        company_info = render_company_info()
-    elif nav_target == 'sec2':
-        check_results, score, selected_dirs, dir_etc, selected_mats = render_diagnosis()
-    elif nav_target == 'sec3':
-        uploaded_file, template_file, df_bs, df_is, years = render_file_upload()
-    elif nav_target == 'sec4':
-        # requires uploaded data
-        uploaded_file, template_file, df_bs, df_is, years = render_file_upload()
-        if uploaded_file and df_bs is not None and df_is is not None:
-            render_data_review(df_bs, df_is)
-            bs_metrics, is_metrics, common_metrics, years = render_financial_metrics(df_bs, df_is, years)
-    elif nav_target == 'sec5':
-        exec_summary = render_comments()
-    elif nav_target == 'sec6':
-        st.markdown('### 6. 최종보고서 생성')
-        st.info("보고서 생성은 사이드바의 '보고서 생성' 버튼을 사용하세요.")
+current_step = st.session_state.get('current_step', 1)
 
-else:
-    # 1. 기업 상세 정보 입력
-    st.markdown('<div id="sec1"></div>', unsafe_allow_html=True)
+# 현재 단계만 화면에 보이도록 나머지 단계 컨테이너를 CSS로 숨긴다.
+# (모든 단계의 렌더 함수는 매 실행마다 호출되어 데이터 연속성을 유지한다)
+_hide_css = "\n".join(f'.st-key-step{_n} {{ display: none !important; }}' for _n in range(1, 7) if _n != current_step)
+st.markdown(f"<style>{_hide_css}</style>", unsafe_allow_html=True)
+
+# 진행도는 사이드바 하단에 고정 표시 (1~5단계 설문 흐름에서만, 6단계 제외)
+if 1 <= current_step <= TOTAL_WIZARD_STEPS:
+    render_sidebar_progress(current_step)
+
+# 1. 기업 상세 정보 입력
+with st.container(key="step1"):
+    render_step_intro(1)
     company_info = render_company_info()
+    render_step_nav(1)
 
-    st.markdown("---")
-
-    # 2. 사전 진단 및 관리 방향성
-    st.markdown('<div id="sec2"></div>', unsafe_allow_html=True)
+# 2. 사전 진단 및 관리 방향성
+with st.container(key="step2"):
+    render_step_intro(2)
     check_results, score, selected_dirs, dir_etc, selected_mats = render_diagnosis()
+    render_step_nav(2)
 
-    st.markdown("---")
-
-    # 3. 자료 업로드
-    st.markdown('<div id="sec3"></div>', unsafe_allow_html=True)
+# 3. 자료 업로드
+with st.container(key="step3"):
+    render_step_intro(3)
     uploaded_file, template_file, df_bs, df_is, years = render_file_upload()
+    render_step_nav(3)
 
-    st.markdown('<div id="sec4"></div>', unsafe_allow_html=True)
+# 4. 재무 데이터 검토
+with st.container(key="step4"):
+    render_step_intro(4)
     if uploaded_file and df_bs is not None and df_is is not None:
-        # 4. 재무 데이터 검토
         render_data_review(df_bs, df_is)
-        
+
         # 4-1. 재무지표 연도별 추이
         bs_metrics, is_metrics, common_metrics, years = render_financial_metrics(df_bs, df_is, years)
-        
+
         # 세션에 지표 데이터 저장 (section5에서 사용)
         st.session_state['bs_metrics'] = bs_metrics
         st.session_state['is_metrics'] = is_metrics
         st.session_state['common_metrics'] = common_metrics
         st.session_state['years'] = years
+    else:
+        st.markdown("### 4. 재무 데이터 검토")
+        st.caption("자료를 업로드하면 이 자리에 재무상태표·손익계산서와 지표가 표시됩니다.")
+        render_upload_placeholder(["🏛️ 재무상태표 (BS)", "📈 손익계산서 (IS)"])
+        st.markdown("### 4-1. 재무지표 연도별 추이")
+        render_upload_placeholder()
+    render_step_nav(4)
 
-    st.markdown("---")
-
-    # 5. 종합의견
-    st.markdown('<div id="sec5"></div>', unsafe_allow_html=True)
+# 5. 종합의견
+with st.container(key="step5"):
+    render_step_intro(5)
     exec_summary = render_comments()
+    render_step_nav(5)
 
-    st.markdown("---")
-
-    # 6. 최종보고서 생성
-    st.markdown('<div id="sec6"></div>', unsafe_allow_html=True)
+# 6. 최종보고서 생성 (설문 흐름/진행도에는 포함되지 않는 완료 화면)
+with st.container(key="step6"):
     render_report_generation(
         company_info=company_info,
         template_file=template_file,
@@ -469,6 +529,9 @@ else:
         selected_mats=selected_mats,
         exec_summary=exec_summary,
     )
+    if st.button("← 이전 단계(종합의견 수정)", key="btn_prev_6"):
+        st.session_state['current_step'] = 5
+        st.rerun()
 
 # 사이드바 보고서 생성 (모든 변수가 정의된 후 실행)
 st.sidebar.markdown("---")

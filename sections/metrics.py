@@ -65,20 +65,21 @@ def _metrics_df(metrics, indicators, years):
     return df.astype(str).replace({'nan': '-', 'None': '-'})
 
 
-def _indicator_buttons(prefix, indicators):
+def _indicator_buttons(prefix, indicators, columns=4):
     selected = []
-    for indicator in indicators:
+    cols = st.columns(columns)
+    for i, indicator in enumerate(indicators):
         state_key = f"doc_{prefix}_{indicator}"
         is_selected = st.session_state.get(state_key, False)
-        label = f"선택됨  {indicator}" if is_selected else indicator
-        if st.button(
-            label,
-            key=f"indicator_btn_{prefix}_{indicator}",
-            type="primary" if is_selected else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state[state_key] = not is_selected
-            st.rerun()
+        with cols[i % columns]:
+            if st.button(
+                indicator,
+                key=f"indicator_btn_{prefix}_{indicator}",
+                type="primary" if is_selected else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state[state_key] = not is_selected
+                st.rerun()
         if is_selected:
             selected.append(indicator)
     return selected

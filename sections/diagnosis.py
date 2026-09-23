@@ -3,6 +3,36 @@ Section 4: 사전 진단 및 관리 방향성
 """
 import streamlit as st
 
+
+def _button_multiselect(label, options, state_key, columns=3):
+    """버튼을 클릭해 여러 개를 선택/해제하는 다중 선택 위젯 (st.multiselect 대체)."""
+    st.markdown(
+        f'<p style="font-size:13px; font-weight:600; color:#363636; margin:4px 0 8px;">{label}</p>',
+        unsafe_allow_html=True
+    )
+    current = st.session_state.get(state_key, [])
+    if not isinstance(current, list):
+        current = [current] if current else []
+
+    cols = st.columns(min(columns, len(options)) or 1)
+    for i, opt in enumerate(options):
+        with cols[i % len(cols)]:
+            is_selected = opt in current
+            if st.button(
+                opt,
+                key=f"{state_key}_{i}",
+                use_container_width=True,
+                type="primary" if is_selected else "secondary"
+            ):
+                if is_selected:
+                    current = [o for o in current if o != opt]
+                else:
+                    current = current + [opt]
+                st.session_state[state_key] = current
+                st.rerun()
+    return current
+
+
 def render_diagnosis():
     """사전 진단 및 관리 방향성 렌더링"""
     st.markdown("---")
@@ -56,8 +86,27 @@ def render_diagnosis():
     score = check_results.count("예")
 
     st.markdown("---")
-    selected_dirs = st.multiselect("재무관리 방향성", ["안정적 성장", "투자 유치 (사업확장)", "IPO/M&A 등 Exit"], key="sel_dir")
-    dir_etc = st.text_input("기타 방향성", value="", key="in_dir_etc")
-    selected_mats = st.multiselect("기타 보유자료", ["사업자등록증", "재무제표", "회사소개서", "기타 양식"], key="sel_mat")
+
+    st.caption("재무관리를 하시는 목적을 선택해주세요. 기타 사항의 경우 아래에 직접 작성해주세요.")
+    selected_dirs = _button_multiselect(
+        "재무관리 방향성",
+        ["안정적 성장", "투자 유치 (사업확장)", "IPO/M&A 등 Exit"],
+        "sel_dir_btn",
+        columns=3
+    )
+    dir_etc = st.text_input(
+        "기타 방향성 (직접 입력)",
+        value=st.session_state.get('in_dir_etc', ''),
+        placeholder="위 항목에 없는 방향성이 있다면 입력해주세요",
+        key="in_dir_etc"
+    )
+
+    st.caption("갖고 계신 회사 자료들을 선택해주세요.")
+    selected_mats = _button_multiselect(
+        "기타 보유자료",
+        ["사업자등록증", "재무제표", "회사소개서", "기타 양식"],
+        "sel_mat_btn",
+        columns=4
+    )
 
     return check_results, score, selected_dirs, dir_etc, selected_mats
