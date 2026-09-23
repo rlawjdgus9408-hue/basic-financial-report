@@ -73,7 +73,7 @@ def render_file_upload():
 
     mode = st.radio(
         "업로드 방식",
-        ["표준 RAW 엑셀", "다른 형식 파일 변환 (AI)"],
+        ["다른 형식 파일 변환 (AI)", "표준 RAW엑셀(기존)"],
         horizontal=True,
         key="upload_mode",
     )
