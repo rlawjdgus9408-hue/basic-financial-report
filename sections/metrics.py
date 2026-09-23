@@ -37,6 +37,17 @@ COMMON_INDICATORS = [
     '자산대비영업이익률', '자본대비영업이익률',
 ]
 
+# "지표 조합 그래프"에서 매번 30여 개 중 직접 고르지 않아도 되도록, 재무분석 목적별로
+# 자주 함께 보는 지표를 미리 묶어둔 추천 조합. BS/IS/공통 출처 구분과는 달리 "무엇을
+# 확인하려는가" 기준으로 묶는다.
+RECOMMENDED_COMBOS = {
+    "수익성 (얼마나 남기나)":      ['매출총이익률', '영업이익률', '순이익률', 'ROE'],
+    "안정성 (재무구조가 튼튼한가)":  ['유동비율', '부채비율', '자기자본비율', '이자보상배율'],
+    "활동성 (자산을 잘 굴리나)":    ['매출채권회전율', '재고자산회전율', '총자산회전율'],
+    "성장성 (외형이 커지고 있나)":  ['매출액증가율', '영업이익증가율', '순이익증가율'],
+    "자본수익성 (투자 대비 성과)":  ['ROA', 'ROE', 'ROIC'],
+}
+
 
 def find_account(df, keywords, years):
     """계정 검색 — 연도별 값 딕셔너리 반환.
@@ -314,6 +325,14 @@ def render_financial_metrics(df_bs, df_is, years):
             st.plotly_chart(fig, use_container_width=True, config=_CHART_CONFIG)
 
     else:
+        st.caption("보려는 목적에 맞는 추천 조합을 고르면 아래 선택창이 자동으로 채워집니다. 이후 직접 더하거나 빼도 됩니다.")
+        combo_cols = st.columns(len(RECOMMENDED_COMBOS))
+        for col, (combo_name, combo_indicators) in zip(combo_cols, RECOMMENDED_COMBOS.items()):
+            with col:
+                if st.button(combo_name, key=f"combo_{combo_name}", use_container_width=True):
+                    st.session_state["chart_options"] = [i for i in combo_indicators if i in all_indicators]
+                    st.rerun()
+
         chart_options = st.multiselect("표시할 지표 선택 (복수)", all_indicators, default=all_indicators[:4], key="chart_options")
         chart_type    = st.radio("그래프 유형", ["선 그래프", "묶음 막대 그래프"], horizontal=True, key="chart_type")
 
