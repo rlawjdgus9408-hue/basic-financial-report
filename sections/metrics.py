@@ -12,6 +12,15 @@ _CHART_CONFIG = {
     'displaylogo': False,
 }
 
+# Plotly 기본 배경은 흰색이라, 검정 테마 페이지 위에서 그래프만 하얀 박스로 튀어 보이지
+# 않도록 다크 테마에 맞춘다 (sections/styles.py의 배경/텍스트 팔레트와 동일하게 맞춤).
+_DARK_CHART_LAYOUT = dict(
+    template='plotly_dark',
+    paper_bgcolor='#0D0D0D',
+    plot_bgcolor='#0D0D0D',
+    font=dict(color='#F2F2F2'),
+)
+
 BS_INDICATORS = [
     '유동비율', '당좌비율', '현금비율', '부채비율', '자기자본비율',
     '유동부채비율', '비유동자산비율', '재고자산비율',
@@ -293,7 +302,7 @@ def render_financial_metrics(df_bs, df_is, years):
         if chart_data:
             fig = px.line(pd.DataFrame(chart_data), x='연도', y='값', markers=True, title=f"{sel} 연도별 추이")
             fig.update_traces(texttemplate='%{y}', textposition='top center')
-            fig.update_layout(xaxis=dict(type='category'), yaxis=dict(showgrid=True))
+            fig.update_layout(xaxis=dict(type='category'), yaxis=dict(showgrid=True), **_DARK_CHART_LAYOUT)
             st.plotly_chart(fig, use_container_width=True, config=_CHART_CONFIG)
 
     else:
@@ -319,7 +328,8 @@ def render_financial_metrics(df_bs, df_is, years):
                 fig.update_layout(
                     title="재무지표 연도별 추이",
                     xaxis=dict(type='category'), yaxis=dict(showgrid=True),
-                    legend_title="지표"
+                    legend_title="지표",
+                    **_DARK_CHART_LAYOUT,
                 )
                 st.plotly_chart(fig, use_container_width=True, config=_CHART_CONFIG)
 

@@ -25,11 +25,11 @@ def render_step_intro(step):
         return
     st.markdown(f"""
     <div style="display:flex; gap:12px; align-items:flex-start;
-                background:#FAFAFA; border:1px solid #F0F0F0; border-left:4px solid #FADB15;
+                background:#1A1A1A; border:1px solid #2A2A2A; border-left:4px solid #FADB15;
                 border-radius:0 8px 8px 0; padding:14px 18px; margin-bottom:22px;">
         <div style="flex-shrink:0; width:30px; height:30px; border-radius:50%; background:#FADB15;
                     display:flex; align-items:center; justify-content:center; font-size:15px;">💬</div>
-        <div style="font-size:14px; line-height:1.6; color:#363636; padding-top:4px;">{text}</div>
+        <div style="font-size:14px; line-height:1.6; color:#D0D0D0; padding-top:4px;">{text}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -58,7 +58,7 @@ def render_sidebar_progress(step, total=TOTAL_WIZARD_STEPS):
     with st.sidebar.container(key="gf_progress_dock"):
         st.markdown(f"""
         <div style="font-size:11px; font-weight:700; color:#9AA0A6; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">진행도</div>
-        <div style="font-size:12px; font-weight:600; color:#363636; margin-bottom:7px;">{message}</div>
+        <div style="font-size:12px; font-weight:600; color:#D0D0D0; margin-bottom:7px;">{message}</div>
         <div class="gf-progress-track">
             <div class="gf-progress-fill" style="width:{percent}%;"></div>
         </div>

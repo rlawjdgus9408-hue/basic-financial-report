@@ -9,6 +9,11 @@ def inject_global_css():
 <style>
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
 
+/* ── 다크 테마 팔레트 (강조색인 노란색 계열은 그대로 유지) ──
+   BG_MAIN #0D0D0D · BG_ELEVATED #1A1A1A · BG_ELEVATED_2 #161616
+   BORDER #2A2A2A · BORDER_STRONG #3A3A3A
+   TEXT_PRIMARY #F2F2F2 · TEXT_SECONDARY #D0D0D0 · TEXT_MUTED #9AA0A6 */
+
 /* ── 글꼴 전역 적용 ── */
 html, body, [class*="css"], * {
     font-family: 'Pretendard Variable', Pretendard, -apple-system,
@@ -23,13 +28,13 @@ html, body, [class*="css"], * {
 
 /* ── 기본 레이아웃 ── */
 #MainMenu, footer, header { visibility: hidden; }
-.stApp { background-color: #FFFFFF; }
+.stApp { background-color: #0D0D0D; }
 .block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1080px; }
 
 /* ── 제목 ── */
 h1 {
     font-size: 26px !important; font-weight: 800 !important;
-    color: #191919 !important;
+    color: #F2F2F2 !important;
     padding-bottom: 14px !important;
     border-bottom: 3px solid #FADB15 !important;
     margin-bottom: 30px !important;
@@ -38,10 +43,10 @@ h1 {
 /* ── 섹션 헤더 (h3) ── */
 h3 {
     font-size: 16px !important; font-weight: 700 !important;
-    color: #212121 !important;
+    color: #F2F2F2 !important;
     padding: 10px 14px !important;
     border-left: 4px solid #FADB15 !important;
-    background-color: #FAFAFA !important;
+    background-color: #1A1A1A !important;
     border-radius: 0 4px 4px 0 !important;
     margin: 28px 0 18px 0 !important;
 }
@@ -50,17 +55,17 @@ h3 {
 label p, .stTextInput label p, .stSelectbox label p,
 .stTextArea label p, .stMultiSelect label p {
     font-size: 13px !important; font-weight: 600 !important;
-    color: #363636 !important; margin-bottom: 4px !important;
+    color: #D0D0D0 !important; margin-bottom: 4px !important;
 }
 
 /* ── 텍스트에어리어 줄간격 ── */
 textarea { line-height: 1.7 !important; }
 
 /* ── 구분선 ── */
-hr { border: none !important; border-top: 1.5px solid #F0F0F0 !important; margin: 28px 0 !important; }
+hr { border: none !important; border-top: 1.5px solid #2A2A2A !important; margin: 28px 0 !important; }
 
 /* ── 캡션 ── */
-.stCaption p, small { color: #898F91 !important; font-size: 12px !important; }
+.stCaption p, small { color: #9AA0A6 !important; font-size: 12px !important; }
 .stButton > button, [data-testid="stDownloadButton"] > button {
     border-radius: 4px !important;
     font-weight: 600 !important; font-size: 14px !important;
@@ -76,12 +81,12 @@ hr { border: none !important; border-top: 1.5px solid #F0F0F0 !important; margin
     background-color: #F0CE00 !important; border-color: #F0CE00 !important;
 }
 .stButton > button[kind="secondary"] {
-    background-color: #FFFFFF !important;
-    color: #363636 !important; border: 1.5px solid #D5D5D5 !important;
+    background-color: #1E1E1E !important;
+    color: #E5E5E5 !important; border: 1.5px solid #3A3A3A !important;
 }
 .stButton > button[kind="secondary"]:hover {
-    background-color: #FAFAFA !important;
-    border-color: #FADB15 !important; color: #191919 !important;
+    background-color: #262626 !important;
+    border-color: #FADB15 !important; color: #FFFFFF !important;
 }
 [data-testid="stHorizontalBlock"] .stButton > button {
     min-height: 58px !important;
@@ -93,8 +98,8 @@ hr { border: none !important; border-top: 1.5px solid #F0F0F0 !important; margin
     display: flex !important;
     visibility: visible !important;
     min-width: 240px !important;
-    background-color: #F5F8FA !important;
-    border-right: 1px solid #E8E8E8 !important;
+    background-color: #161616 !important;
+    border-right: 1px solid #2A2A2A !important;
 }
 [data-testid="stSidebarCollapseButton"],
 [data-testid="collapsedControl"],
@@ -107,12 +112,12 @@ section[data-testid="stSidebar"] > div > div > button {
 }
 [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2 {
     font-size: 15px !important; font-weight: 700 !important;
-    color: #212121 !important; border: none !important;
+    color: #F2F2F2 !important; border: none !important;
     padding: 0 !important; margin-bottom: 10px !important;
 }
 [data-testid="stSidebar"] h3 {
     font-size: 11px !important; font-weight: 700 !important;
-    color: #898F91 !important; border: none !important;
+    color: #9AA0A6 !important; border: none !important;
     background: none !important; padding: 0 !important;
     text-transform: uppercase !important; letter-spacing: 0.08em !important;
     margin: 14px 0 6px 0 !important;
@@ -120,8 +125,8 @@ section[data-testid="stSidebar"] > div > div > button {
 [data-testid="stSidebar"] .stButton > button,
 [data-testid="stSidebar"] [data-testid="stDownloadButton"] > button {
     min-height: 40px !important; font-size: 13px !important;
-    font-weight: 500 !important; background-color: #FFFFFF !important;
-    color: #363636 !important; border: 1px solid #E0E0E0 !important;
+    font-weight: 500 !important; background-color: #1E1E1E !important;
+    color: #E0E0E0 !important; border: 1px solid #2E2E2E !important;
     border-radius: 4px !important; margin-bottom: 3px !important;
     justify-content: flex-start !important;
 }
@@ -173,15 +178,15 @@ section[data-testid="stSidebar"] > div > div > button {
     justify-content: center !important;
 }
 [data-testid="stColumn"]:has(> [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"][class*="st-key-clear_"]) button:hover {
-    color: #191919 !important;
+    color: #FADB15 !important;
     background: transparent !important;
 }
 
 /* ── 업로드 대기 스켈레톤 박스 ── */
 .gf-upload-placeholder {
     display: flex; align-items: center; justify-content: center;
-    min-height: 160px; border: 1.5px dashed #D9D9D9; border-radius: 8px;
-    background: repeating-linear-gradient(135deg, #FAFAFA, #FAFAFA 10px, #F3F3F3 10px, #F3F3F3 20px);
+    min-height: 160px; border: 1.5px dashed #3A3A3A; border-radius: 8px;
+    background: repeating-linear-gradient(135deg, #161616, #161616 10px, #1C1C1C 10px, #1C1C1C 20px);
     color: #9AA0A6; font-size: 14px; font-weight: 700; letter-spacing: 0.02em;
     margin-bottom: 14px;
 }
@@ -193,12 +198,12 @@ section[data-testid="stSidebar"] > div > div > button {
 /* ── 사이드바 하단 고정 진행도 ── */
 [class*="st-key-gf_progress_dock"] {
     position: sticky !important; bottom: 0 !important;
-    background: #F5F8FA !important;
+    background: #161616 !important;
     padding: 12px 6px 6px !important; margin-top: 16px !important;
-    border-top: 1px solid #E8E8E8 !important; z-index: 30 !important;
+    border-top: 1px solid #2A2A2A !important; z-index: 30 !important;
 }
 .gf-progress-track {
-    width: 100%; height: 8px; background: #E8E8E8; border-radius: 4px;
+    width: 100%; height: 8px; background: #2A2A2A; border-radius: 4px;
     overflow: hidden; position: relative;
 }
 .gf-progress-fill {
