@@ -147,26 +147,51 @@ def read_existing_raw(file_bytes):
     return {"years": years, "year_cols": year_cols, "bs_rows": bs_rows, "is_rows": is_rows}
 
 
+def _norm_code(code):
+    """계정 코드를 비교 가능한 문자열로 정리한다(None/빈 값은 "" — "코드 없음"으로 취급)."""
+    if code in (None, ""):
+        return ""
+    return str(code).strip()
+
+
 def auto_match(existing_rows, new_entries):
     """자동 매칭해 검토 표에 미리 채워둘 초안 plan을 만든다.
 
-    "매출채권 (외상매출금)" ↔ "가.외상매출금"처럼 표기가 다른 경우가 흔해서 두 단계로 매칭한다.
+    0단계(최우선): 양쪽 다 계정 코드(표준재무제표증명의 "코드" 번호 등)가 있으면 코드로
+    매칭한다 — 계정명 표기 차이("상품매출" vs "상품매출액")에 흔들리지 않는 가장 신뢰도
+    높은 기준이라 라벨 매칭보다 먼저 시도한다. (기존 RAW 파일에서 온 행은 코드 열이 없어
+    보통 이 단계가 적용되지 않고, 곧바로 아래 라벨 매칭으로 넘어간다.)
+
+    "매출채권 (외상매출금)" ↔ "가.외상매출금"처럼 표기가 다른 경우가 흔해서 코드가 없으면
+    두 단계로 매칭한다.
     1단계: 괄호 안 상세 계정명(구체적 키)끼리 먼저 매칭 — "4.매입채무"(그룹 소계) 대신
            "가.외상매입금"(세부 항목)처럼 더 정확한 대상을 우선 찾기 위함.
     2단계: 1단계에서 못 찾은 것만 넓은 키(괄호 제거/전체 라벨)로 다시 매칭.
     """
     remaining = [
-        {"entry": e, "specific": _specific_keys(e.get("account", "")), "generic": _generic_keys(e.get("account", ""))}
+        {
+            "entry": e,
+            "code": _norm_code(e.get("code")),
+            "specific": _specific_keys(e.get("account", "")),
+            "generic": _generic_keys(e.get("account", "")),
+        }
         for e in new_entries
     ]
 
     plan = []
     for existing in existing_rows:
+        existing_code = _norm_code(existing.get("code"))
         specific = _specific_keys(existing["label"])
         generic = _generic_keys(existing["label"])
         match = None
+        # 0순위: 계정 코드가 양쪽에 다 있으면 코드로 매칭.
+        if existing_code:
+            for i, cand in enumerate(remaining):
+                if cand["code"] and cand["code"] == existing_code:
+                    match = remaining.pop(i)["entry"]
+                    break
         # 1순위: 기존 라벨의 "괄호 안 세부명"이, 후보(구체적이든 넓은 키든)와 일치하는지 먼저 본다.
-        if specific:
+        if match is None and specific:
             for i, cand in enumerate(remaining):
                 if specific & (cand["specific"] | cand["generic"]):
                     match = remaining.pop(i)["entry"]
@@ -181,14 +206,18 @@ def auto_match(existing_rows, new_entries):
                     break
 
         new_value = 0
+        matched_code = existing_code
         if match is not None:
             values = match.get("values", [])
             new_value = values[-1] if values else 0
+            if not matched_code:
+                matched_code = _norm_code(match.get("code"))
         plan.append({
             "label": existing["label"],
             "row_index": existing["row_index"],
             "existing_values": existing["values"],
             "new_value": new_value,
+            "code": matched_code,
         })
 
     for cand in remaining:
@@ -199,6 +228,7 @@ def auto_match(existing_rows, new_entries):
             "row_index": None,
             "existing_values": {},
             "new_value": values[-1] if values else 0,
+            "code": cand["code"],
         })
 
     return plan
