@@ -148,6 +148,29 @@ section[data-testid="stSidebar"] > div > div > button {
     background-color: #FADB15 !important; color: #191919 !important;
 }
 .stAlert { border-radius: 4px !important; }
+
+/* ── 입력창(텍스트/텍스트에어리어/셀렉트박스): 어두운 페이지 위에서도 잘 보이도록
+   흰 배경 카드로 표시한다. (표/데이터에디터는 캔버스로 직접 그려서 CSS로 못 바꾼다 —
+   앱 전체를 밝은 테마로 바꾸지 않는 한 표만 따로 밝게 할 방법이 없다.) ── */
+.stTextInput input, .stTextArea textarea, .stNumberInput input,
+[data-baseweb="input"] input, [data-baseweb="textarea"] textarea,
+[data-baseweb="select"] > div {
+    background-color: #FFFFFF !important;
+    color: #191919 !important;
+    border: 1px solid #D5D5D5 !important;
+}
+[data-baseweb="select"] input { color: #191919 !important; }
+.stTextInput input::placeholder, .stTextArea textarea::placeholder {
+    color: #9AA0A6 !important;
+}
+/* 셀렉트박스를 열었을 때 뜨는 옵션 목록(팝오버)도 같이 흰 배경으로 */
+[data-baseweb="popover"] [data-baseweb="menu"], ul[role="listbox"] {
+    background-color: #FFFFFF !important;
+}
+[data-baseweb="menu"] li, ul[role="listbox"] li,
+[data-baseweb="menu"] li *, ul[role="listbox"] li * {
+    color: #191919 !important;
+}
 .ai-model-label {
     color: #9AA0A6 !important;
     font-size: 11px !important;
