@@ -39,9 +39,17 @@ COMMON_INDICATORS = [
 
 
 def find_account(df, keywords, years):
-    """계정 검색 — 연도별 값 딕셔너리 반환"""
+    """계정 검색 — 연도별 값 딕셔너리 반환.
+
+    일부 RAW 파일은 본문 계정과 별도로 "영업이익률", "매출액증가율(%)" 같은 비율 요약 행을
+    같은 표 안에 함께 담고 있다. 이런 행이 "영업이익" 같은 금액 키워드에 우연히 걸려
+    (예: "영업이익률"이 "영업이익"을 포함) 금액 대신 비율값(예: 0.097)이 잘못 쓰이는 사고가
+    실제로 있었다 — 라벨에 "률"이나 "%"가 있으면 애초에 매칭 대상에서 제외한다."""
     for kw in keywords:
-        matches = df[df['계정과목'].str.contains(kw, case=False, na=False)]
+        matches = df[
+            df['계정과목'].str.contains(kw, case=False, na=False)
+            & ~df['계정과목'].str.contains('률|%', case=False, na=False)
+        ]
         if not matches.empty:
             row = matches.iloc[0]
             result = {}
@@ -243,11 +251,11 @@ def render_financial_metrics(df_bs, df_is, years):
     is_accounts = {
         '매출액':    find_account(df_is, ['매출액', '매출', '수익', '총매출', '사업수익'], years),
         '매출원가':  find_account(df_is, ['매출원가', '원가', '판매원가', '제품원가'], years),
-        '매출총이익': find_account(df_is, ['매출총이익', 'gross', '총이익'], years),
+        '매출총이익': find_account(df_is, ['매출총이익', '매출총손익', 'gross', '총이익'], years),
         '판매관리비': find_account(df_is, ['판매관리비', '판매비', '관리비', '운영비'], years),
-        '영업이익':  find_account(df_is, ['영업이익', '운영이익', '본이익'], years),
+        '영업이익':  find_account(df_is, ['영업이익', '영업손익', '운영이익', '본이익'], years),
         'EBITDA':    find_account(df_is, ['EBITDA', '에비타'], years),
-        '당기순이익': find_account(df_is, ['당기순이익', '순이익', '당기순손실'], years),
+        '당기순이익': find_account(df_is, ['당기순이익', '당기순손익', '순이익', '당기순손실'], years),
         '영업외비용': find_account(df_is, ['영업외비용', '금융비용', '이자비용'], years),
     }
 

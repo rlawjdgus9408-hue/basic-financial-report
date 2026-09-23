@@ -71,15 +71,20 @@ def _is_total_label(label):
     return any(hint in (label or "") for hint in _TOTAL_HINTS)
 
 
-def _year_like_text(value):
+def year_like_text(value):
     """셀 값이 연도로 볼 수 있는 텍스트를 담고 있으면 그 원본 텍스트를, 아니면 None을 반환한다.
+    sections/upload.py의 RAW 파싱과 여기 둘 다 같은 판단 기준을 쓰기 위해 공유한다.
 
     raw-sheet 스킬의 표준 연도 헤더 형식은 "제N기(YYYY)"(기수를 모르면 "YYYY"만)라서,
     문자열 셀은 완전일치가 아니라 "20YY" 부분일치로 판단한다. 숫자 셀은 그 값 자체가
     정확히 20xx 형태일 때만 연도로 인정한다 — 그렇지 않으면 억 단위 금액 안에 우연히
-    "20xx"가 섞여 있을 때(예: 92,045,000) 데이터 행을 헤더 행으로 오인할 수 있다."""
+    "20xx"가 섞여 있을 때(예: 245,182,000 -> "2000"으로 끝남) 데이터 행을 헤더 행으로
+    오인할 수 있다(실제로 발생했던 사례)."""
     if isinstance(value, (int, float)):
-        text = str(int(value))
+        try:
+            text = str(int(value))  # NaN 등 int로 못 바꾸는 float는 여기서 걸러진다
+        except (ValueError, OverflowError):
+            return None
         return text if re.fullmatch(r"20\d{2}", text) else None
     if isinstance(value, str):
         text = value.strip()
@@ -124,7 +129,7 @@ def read_existing_raw(file_bytes):
             for cell in row:
                 if cell.column <= 2:
                     continue
-                text = _year_like_text(cell.value)
+                text = year_like_text(cell.value)
                 if text is not None:
                     found[cell.column] = text
             if len(found) >= 2:
