@@ -1,12 +1,15 @@
 """
 Section 1: 기업 상세 정보 입력
 """
+import re
+
 import streamlit as st
 import pandas as pd
 from pathlib import Path
 
 
 _KSIC_FILE = Path(__file__).parent.parent / "assets" / "reference" / "업종코드-표준산업분류 연계표.xlsx"
+_DIGITS_RE = re.compile(r"\D")
 
 def _clear_input(widget_key):
     st.session_state[widget_key] = ''
@@ -19,6 +22,60 @@ def _clearable_text_input(label, value, placeholder, key, **kwargs):
     with clear_col:
         st.button("×", key=f"clear_{key}", help=f"{label} 입력 지우기", type="tertiary", on_click=_clear_input, args=(key,))
     return result
+
+
+def _auto_format_session(key, formatter):
+    """위젯이 그려지기 전에 session_state 값을 정해진 형식으로 다듬는다.
+
+    sections/comment.py의 종합의견 ▪ 글머리 자동 추가와 같은 패턴 — 입력 후 커서가
+    필드를 벗어나 rerun될 때 반영된다. 숫자만 남겨서 다시 포매팅하므로 이미 하이픈이
+    섞여 있거나 일부만 지워도 항상 올바른 형식으로 다시 맞춰진다."""
+    current = st.session_state.get(key, "")
+    if not current:
+        return
+    formatted = formatter(current)
+    if formatted != current:
+        st.session_state[key] = formatted
+
+
+def _format_phone(text):
+    """연락처: 02(서울)는 2-3-4/2-4-4, 그 외(010 등)는 3-3-4/3-4-4로 자동 하이픈."""
+    digits = _DIGITS_RE.sub("", text)[:11]
+    if digits.startswith("02"):
+        if len(digits) <= 2:
+            return digits
+        if len(digits) <= 5:
+            return f"{digits[:2]}-{digits[2:]}"
+        if len(digits) <= 9:
+            return f"{digits[:2]}-{digits[2:5]}-{digits[5:]}"
+        return f"{digits[:2]}-{digits[2:6]}-{digits[6:10]}"
+    if len(digits) <= 3:
+        return digits
+    if len(digits) <= 6:
+        return f"{digits[:3]}-{digits[3:]}"
+    if len(digits) <= 10:
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    return f"{digits[:3]}-{digits[3:7]}-{digits[7:11]}"
+
+
+def _format_biz_no(text):
+    """사업자번호: 000-00-00000 (3-2-5) 형식으로 자동 하이픈."""
+    digits = _DIGITS_RE.sub("", text)[:10]
+    if len(digits) <= 3:
+        return digits
+    if len(digits) <= 5:
+        return f"{digits[:3]}-{digits[3:]}"
+    return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+
+
+def _format_biz_start_date(text):
+    """사업개시일: YYYY-MM-DD (4-2-2) 형식으로 자동 하이픈."""
+    digits = _DIGITS_RE.sub("", text)[:8]
+    if len(digits) <= 4:
+        return digits
+    if len(digits) <= 6:
+        return f"{digits[:4]}-{digits[4:]}"
+    return f"{digits[:4]}-{digits[4:6]}-{digits[6:]}"
 
 @st.cache_data
 def load_ksic_data():
@@ -54,6 +111,12 @@ def load_ksic_data():
 def render_company_info():
     """기업 상세 정보 입력 렌더링"""
     st.markdown("### 1. 기업 상세 정보 입력")
+
+    # 연락처/사업개시일/사업자번호: 숫자만 입력해도 하이픈이 자동으로 붙는다
+    # (커서가 필드를 벗어나 rerun되는 시점에 반영됨).
+    _auto_format_session("input_phone", _format_phone)
+    _auto_format_session("input_biz_start", _format_biz_start_date)
+    _auto_format_session("input_biz_no", _format_biz_no)
 
     col_info1, col_info2 = st.columns(2)
     
