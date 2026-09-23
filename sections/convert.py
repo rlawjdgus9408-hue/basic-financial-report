@@ -323,17 +323,27 @@ def render_raw_converter():
         "변환 결과는 반드시 아래 표에서 직접 검토·수정한 뒤 다음 단계로 진행하세요."
     )
 
-    existing_file = st.file_uploader(
-        "기존 RAW 엑셀 파일 (선택 — 있으면 새 연도를 자동으로 이어붙입니다)",
-        type=["xlsx"],
-        key="convert_existing_raw_file",
-    )
     source_files = st.file_uploader(
         "원본 재무제표 파일 업로드 (엑셀/PDF/이미지, 여러 개 선택 가능)",
         type=["xlsx", "xls", "pdf", "png", "jpg", "jpeg"],
         accept_multiple_files=True,
         key="convert_source_file",
     )
+
+    # "표준 RAW엑셀(기존)" 모드(위 업로드 방식 선택지)와는 목적이 다르다 — 그쪽은 이미 완성된
+    # 표준 RAW 파일을 그대로 검토만 할 때 쓰고, 여기는 지금 변환하는 자료를 기존 RAW 파일에
+    # "새 연도"로 이어붙이고 싶을 때만 선택적으로 쓴다. 혼동을 줄이기 위해 접어둔다.
+    with st.expander("📎 기존 RAW 파일에 새 연도로 이어붙이기 (선택)"):
+        st.caption(
+            "이미 갖고 계신 표준 RAW 엑셀이 있고, 지금 업로드하는 자료를 그 파일에 새 연도 컬럼으로 "
+            "이어붙이고 싶을 때만 업로드하세요. 비워두면 새 RAW 파일을 처음부터 만듭니다."
+        )
+        existing_file = st.file_uploader(
+            "기존 RAW 엑셀 파일",
+            type=["xlsx"],
+            key="convert_existing_raw_file",
+            label_visibility="collapsed",
+        )
 
     if not source_files:
         st.session_state.pop("convert_result_key", None)
