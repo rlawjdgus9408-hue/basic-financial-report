@@ -10,9 +10,13 @@ from openpyxl.utils import get_column_letter
 
 _SECTION_BS = "재무상태표"
 _SECTION_IS = "손익계산서"
+# 재무상태표/손익계산서가 아닌 다른 재무제표 섹션 — raw-sheet 스킬(§3-1)이 이 순서로 생성한다.
+# 손익계산서 뒤에 이런 섹션이 이어질 수 있어, 이 제목을 만나면 bs/is 데이터 수집을 멈춰야 한다.
+_OTHER_STATEMENT_TITLES = ("제조원가명세서", "이익잉여금처분계산서", "결손금처리계산서")
 _TOTAL_HINTS = ("총계", "합계")
 _UNMATCHED_NOTE = "※ 미분류 신규 계정 (수동 확인 필요)"
 _NUM_FORMAT = r"#,##0;\(#,##0\);\-"
+_YEAR_LIKE_RE = re.compile(r"20\d{2}")
 
 _LABEL_PREFIX_RE = re.compile(
     r"^\s*(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\.?|\d+\.|\(\d+\)|[①②③④⑤⑥⑦⑧⑨⑩]|[가-힣]\.)\s*"
@@ -67,8 +71,28 @@ def _is_total_label(label):
     return any(hint in (label or "") for hint in _TOTAL_HINTS)
 
 
+def _year_like_text(value):
+    """셀 값이 연도로 볼 수 있는 텍스트를 담고 있으면 그 원본 텍스트를, 아니면 None을 반환한다.
+
+    raw-sheet 스킬의 표준 연도 헤더 형식은 "제N기(YYYY)"(기수를 모르면 "YYYY"만)라서,
+    문자열 셀은 완전일치가 아니라 "20YY" 부분일치로 판단한다. 숫자 셀은 그 값 자체가
+    정확히 20xx 형태일 때만 연도로 인정한다 — 그렇지 않으면 억 단위 금액 안에 우연히
+    "20xx"가 섞여 있을 때(예: 92,045,000) 데이터 행을 헤더 행으로 오인할 수 있다."""
+    if isinstance(value, (int, float)):
+        text = str(int(value))
+        return text if re.fullmatch(r"20\d{2}", text) else None
+    if isinstance(value, str):
+        text = value.strip()
+        return text if _YEAR_LIKE_RE.search(text) else None
+    return None
+
+
 def read_existing_raw(file_bytes):
-    """기존 RAW 시트를 읽어 재무상태표/손익계산서 각각의 행 목록과 연도를 반환한다."""
+    """기존 RAW 시트를 읽어 재무상태표/손익계산서 각각의 행 목록과 연도를 반환한다.
+
+    재무상태표/손익계산서 뒤에 제조원가명세서·이익잉여금처분계산서 등 다른 섹션이
+    이어질 수 있어, 그런 제목을 만나면 수집을 멈춘다(그러지 않으면 손익계산서 구간에
+    뒤 섹션 데이터가 그대로 섞여 들어간다)."""
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     if "RAW" not in wb.sheetnames:
         raise ValueError("'RAW' 시트를 찾을 수 없습니다.")
@@ -76,7 +100,7 @@ def read_existing_raw(file_bytes):
 
     section = None
     year_row = None
-    year_cols = {}  # col_idx -> year label(str)
+    year_cols = {}  # col_idx -> year label(원본 셀 텍스트 그대로, 예: "제5기(2024)" 또는 "2024")
     bs_rows, is_rows = [], []
 
     for row in ws.iter_rows(min_row=1, max_row=ws.max_row):
@@ -89,6 +113,9 @@ def read_existing_raw(file_bytes):
         if _SECTION_IS in label:
             section, year_row = "is", None
             continue
+        if any(title in label for title in _OTHER_STATEMENT_TITLES):
+            section, year_row = None, None
+            continue
         if section is None:
             continue
 
@@ -97,11 +124,10 @@ def read_existing_raw(file_bytes):
             for cell in row:
                 if cell.column <= 2:
                     continue
-                if isinstance(cell.value, (int, float)):
-                    found[cell.column] = str(int(cell.value))
-                elif isinstance(cell.value, str) and re.fullmatch(r"20\d{2}", cell.value.strip()):
-                    found[cell.column] = cell.value.strip()
-            if found:
+                text = _year_like_text(cell.value)
+                if text is not None:
+                    found[cell.column] = text
+            if len(found) >= 2:
                 year_cols = found
                 year_row = row[0].row
             continue

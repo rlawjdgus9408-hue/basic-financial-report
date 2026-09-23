@@ -131,7 +131,7 @@ def render_company_info():
         with col_email1:
             email_local = _clearable_text_input("이메일", st.session_state.email.split('@')[0] if '@' in st.session_state.email else st.session_state.email, "example", "input_email_local")
         with col_email2:
-            st.markdown("<p style='margin-top:34px; font-size:16px; text-align:center; color:#363636;'>@</p>", unsafe_allow_html=True)
+            st.markdown("<p style='margin-top:34px; font-size:16px; text-align:center; color:#D0D0D0;'>@</p>", unsafe_allow_html=True)
         with col_email3:
             email_domain = st.selectbox("도메인",
                 ["gmail.com", "naver.com", "kakao.com", "hanmail.net", "nate.com", "hotmail.com", "icloud.com", "직접 입력"],

@@ -7,7 +7,7 @@ import streamlit as st
 def _button_multiselect(label, options, state_key, columns=3):
     """버튼을 클릭해 여러 개를 선택/해제하는 다중 선택 위젯 (st.multiselect 대체)."""
     st.markdown(
-        f'<p style="font-size:13px; font-weight:600; color:#363636; margin:4px 0 8px;">{label}</p>',
+        f'<p style="font-size:13px; font-weight:600; color:#D0D0D0; margin:4px 0 8px;">{label}</p>',
         unsafe_allow_html=True
     )
     current = st.session_state.get(state_key, [])
@@ -56,7 +56,7 @@ def render_diagnosis():
         current = st.session_state.get(f'q{i}', '아니오')
 
         st.markdown(
-            f'<p style="font-size:14px; font-weight:600; color:#212121; '
+            f'<p style="font-size:14px; font-weight:600; color:#F2F2F2; '
             f'margin:18px 0 8px 0;">{i+1}. {q}</p>',
             unsafe_allow_html=True
         )
