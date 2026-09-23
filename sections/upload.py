@@ -8,8 +8,10 @@ import io
 from pathlib import Path
 
 from sections.convert import render_raw_converter
+from sections.raw_template import year_like_text
 
 _DEFAULT_TEMPLATE = Path(__file__).parent.parent / "assets" / "templates" / "[그로스파이낸스]_기초재무진단결과_템플릿.docx"
+_YEAR_DIGITS_RE = re.compile(r"20\d{2}")
 
 @st.cache_data(show_spinner=False)
 def _parse_raw_excel(file_bytes):
@@ -24,14 +26,21 @@ def _parse_raw_excel(file_bytes):
     """
     raw_df = pd.read_excel(io.BytesIO(file_bytes), sheet_name="RAW", engine="openpyxl", header=None)
 
+    # 연도 인식은 raw_template.year_like_text()와 같은 기준을 쓴다 — 숫자 셀은 값 전체가
+    # 정확히 20xx일 때만 연도로 인정한다. 단순 "20\d{2} 부분일치"만 쓰면 245,182,000처럼
+    # 우연히 "...2000"으로 끝나는 금액이 섞인 데이터 행을 새 섹션 헤더로 오인해, 그 앞
+    # 섹션이 몇 줄 만에 잘려버리는 문제가 실제로 있었다.
     header_rows = []
     year_cols = {}
     for idx, row in raw_df.iterrows():
-        found = {
-            column: match.group(1)
-            for column, value in enumerate(row)
-            if (match := re.search(r"(20\d{2})", str(value)))
-        }
+        found = {}
+        for column, value in enumerate(row):
+            text = year_like_text(value)
+            if text is None:
+                continue
+            match = _YEAR_DIGITS_RE.search(text)
+            if match:
+                found[column] = match.group(0)
         if len(found) >= 2:
             header_rows.append(idx)
             if not year_cols:
