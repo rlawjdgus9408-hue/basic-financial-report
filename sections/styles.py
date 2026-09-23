@@ -81,12 +81,12 @@ hr { border: none !important; border-top: 1.5px solid #2A2A2A !important; margin
     background-color: #F0CE00 !important; border-color: #F0CE00 !important;
 }
 .stButton > button[kind="secondary"] {
-    background-color: #1E1E1E !important;
-    color: #E5E5E5 !important; border: 1.5px solid #3A3A3A !important;
+    background-color: #FFFFFF !important;
+    color: #191919 !important; border: 1.5px solid #D5D5D5 !important;
 }
 .stButton > button[kind="secondary"]:hover {
-    background-color: #262626 !important;
-    border-color: #FADB15 !important; color: #FFFFFF !important;
+    background-color: #FAFAFA !important;
+    border-color: #FADB15 !important; color: #191919 !important;
 }
 [data-testid="stHorizontalBlock"] .stButton > button {
     min-height: 58px !important;
@@ -125,10 +125,21 @@ section[data-testid="stSidebar"] > div > div > button {
 [data-testid="stSidebar"] .stButton > button,
 [data-testid="stSidebar"] [data-testid="stDownloadButton"] > button {
     min-height: 40px !important; font-size: 13px !important;
-    font-weight: 500 !important; background-color: #1E1E1E !important;
-    color: #E0E0E0 !important; border: 1px solid #2E2E2E !important;
+    font-weight: 500 !important;
     border-radius: 4px !important; margin-bottom: 3px !important;
     justify-content: flex-start !important;
+}
+/* 목차에서 현재 단계(kind=primary)는 노란 강조, 나머지(kind=secondary)는 흰 배경 —
+   일반 버튼 규칙과 동일하게 명시적으로 나눠서, 선택 상태가 마우스를 올려야만 보이던
+   문제(호버 전까지 전부 같은 색으로 보이던 것)를 없앤다. */
+[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] [data-testid="stDownloadButton"] > button {
+    background-color: #FFFFFF !important;
+    color: #191919 !important; border: 1px solid #D5D5D5 !important;
+}
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background-color: #FADB15 !important;
+    color: #191919 !important; border: 1px solid #FADB15 !important;
 }
 [data-testid="stSidebar"] .stButton > button p,
 [data-testid="stSidebar"] .stButton > button div,
@@ -144,24 +155,34 @@ section[data-testid="stSidebar"] > div > div > button {
     border-color: #FADB15 !important; color: #191919 !important;
 }
 .stProgress > div > div > div { background-color: #FADB15 !important; }
-.stMultiSelect [data-baseweb="tag"] {
-    background-color: #FADB15 !important; color: #191919 !important;
-}
 .stAlert { border-radius: 4px !important; }
 
 /* ── 입력창(텍스트/텍스트에어리어/셀렉트박스): 어두운 페이지 위에서도 잘 보이도록
    흰 배경 카드로 표시한다. (표/데이터에디터는 캔버스로 직접 그려서 CSS로 못 바꾼다 —
    앱 전체를 밝은 테마로 바꾸지 않는 한 표만 따로 밝게 할 방법이 없다.) ── */
 .stTextInput input, .stTextArea textarea, .stNumberInput input,
-[data-baseweb="input"] input, [data-baseweb="textarea"] textarea,
-[data-baseweb="select"] > div {
+[data-baseweb="input"] input, [data-baseweb="textarea"] textarea {
     background-color: #FFFFFF !important;
     color: #191919 !important;
     border: 1px solid #D5D5D5 !important;
 }
-[data-baseweb="select"] input { color: #191919 !important; }
 .stTextInput input::placeholder, .stTextArea textarea::placeholder {
     color: #9AA0A6 !important;
+}
+/* 셀렉트박스/멀티셀렉트 컨트롤 자체. Streamlit 버전에 따라 배경색이 [data-baseweb="select"]
+   자체에 붙기도, 그 자식 div에 붙기도 해서 두 단계 모두에 흰 배경을 강제한다. */
+[data-baseweb="select"], [data-baseweb="select"] > div {
+    background-color: #FFFFFF !important;
+    border-color: #D5D5D5 !important;
+}
+[data-baseweb="select"] *:not([data-baseweb="tag"]):not([data-baseweb="tag"] *) {
+    color: #191919 !important;
+    fill: #191919 !important;
+}
+[data-baseweb="select"] input { background-color: transparent !important; }
+/* 멀티셀렉트로 고른 항목(태그 칩)은 계속 노란 강조로 — 위 규칙보다 나중에 선언해 우선한다. */
+.stMultiSelect [data-baseweb="tag"], .stMultiSelect [data-baseweb="tag"] * {
+    background-color: #FADB15 !important; color: #191919 !important; fill: #191919 !important;
 }
 /* 셀렉트박스를 열었을 때 뜨는 옵션 목록(팝오버)도 같이 흰 배경으로 */
 [data-baseweb="popover"] [data-baseweb="menu"], ul[role="listbox"] {
