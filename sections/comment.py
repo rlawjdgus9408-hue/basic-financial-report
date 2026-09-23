@@ -8,7 +8,7 @@ from pathlib import Path
 import streamlit as st
 import pandas as pd
 
-from sections.ai_client import configured_value, gemini_model
+from sections.ai_client import configured_value, gemini_model, es_guideline_text, ai_comment_extra_rules
 
 _USER_ICON = Path(__file__).parent.parent / "assets" / "icons" / "assistant_icon.webp"
 _GEMINI_ICON = Path(__file__).parent.parent / "assets" / "icons" / "gemini_icon.svg"
@@ -41,9 +41,27 @@ def _plain_text_ai_answer(answer):
     return answer.strip()
 
 
+def _system_instruction():
+    """이 채팅은 곧 기초재무진단보고서의 종합의견(Executive Summary)을 작성/수정하는 용도이므로,
+    docs/es_guideline.md의 ES 작성 규칙을 항상 시스템 지시로 강제한다."""
+    parts = [
+        "당신은 그로스파이낸스의 중소기업 재무분석 전문가이자 보고서 에디터입니다.",
+        "이 대화의 결과물은 기초재무진단보고서 1페이지 '종합의견(Executive Summary)'에 그대로 쓰일 수 있으므로, "
+        "아래 [ES 작성 규칙]을 반드시 지켜서 답변하세요. 질문이 특정 수치나 해석만 묻는 경우에도 "
+        "종합의견에 바로 반영 가능한 톤·표기 규칙(금지 표현, 단위 표기, 화살표 개수, 인과 단정 금지 등)은 항상 따르세요.",
+        "확인되지 않은 사실은 추정하지 말고 '확인 불가'라고 답하거나 어떤 데이터가 더 필요한지 되물으세요.",
+        "",
+        "[ES 작성 규칙]",
+        es_guideline_text() or "(규칙 파일을 불러오지 못했습니다. 일반적인 재무분석 전문가 기준으로 신중하게 답변하세요.)",
+    ]
+    extra = ai_comment_extra_rules()
+    if extra:
+        parts += ["", "[추가 규칙]", extra]
+    return "\n".join(parts)
+
+
 def _generate_ai_response(provider, model, api_key, question):
-    prompt = f"""당신은 중소기업 재무분석 전문가입니다.
-아래 기업 데이터를 근거로 질문에 한국어로 답변하세요.
+    prompt = f"""아래 기업 데이터를 근거로 질문에 한국어로 답변하세요.
 수치가 없는 내용은 추정하지 말고, 답변은 실무자가 바로 활용할 수 있게 작성하세요.
 
 [기업 데이터]
@@ -54,9 +72,14 @@ def _generate_ai_response(provider, model, api_key, question):
 """
 
     from google import genai
+    from google.genai import types
 
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(model=model, contents=prompt)
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=types.GenerateContentConfig(system_instruction=_system_instruction()),
+    )
     return response.text or "응답을 받지 못했습니다."
 
 

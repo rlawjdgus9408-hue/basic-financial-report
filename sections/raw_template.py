@@ -272,11 +272,13 @@ def write_merged_workbook(original_file_bytes, existing, bs_plan, is_plan, new_y
     new_col_letter = get_column_letter(new_col)
     src_col_letter = get_column_letter(last_col)
 
-    header_row = None
-    for r in range(1, ws.max_row + 1):
-        if str(ws.cell(row=r, column=last_col).value) == str(existing["years"][-1]):
-            header_row = r
-            break
+    # 재무상태표/손익계산서 두 섹션 모두 각자의 연도 헤더 행을 갖고 있어, 조건에 맞는
+    # 행을 전부 모아야 한다 (첫 번째 매치에서 멈추면 두 번째 섹션의 헤더가 갱신되지 않아
+    # 이후 read_existing_raw()가 그 섹션의 새 연도 값을 아예 못 읽는 문제가 생긴다).
+    header_rows = [
+        r for r in range(1, ws.max_row + 1)
+        if str(ws.cell(row=r, column=last_col).value) == str(existing["years"][-1])
+    ]
 
     # 1) 매칭된 기존 행: 값/서식 채우기 (행 이동 없음)
     for plan_rows in (bs_plan, is_plan):
@@ -295,8 +297,8 @@ def write_merged_workbook(original_file_bytes, existing, bs_plan, is_plan, new_y
             new_cell.alignment = copy(old_cell.alignment)
             new_cell.border = copy(old_cell.border)
 
-    # 2) 연도 헤더
-    if header_row:
+    # 2) 연도 헤더 (재무상태표/손익계산서 각 섹션 헤더를 모두 갱신)
+    for header_row in header_rows:
         old_header = ws.cell(row=header_row, column=last_col)
         new_header = ws.cell(row=header_row, column=new_col)
         new_header.value = int(new_year) if str(new_year).isdigit() else new_year
