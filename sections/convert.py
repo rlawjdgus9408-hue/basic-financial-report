@@ -59,7 +59,10 @@ _PROMPT = """당신은 한국 중소기업 재무제표 판독 전문가입니�
 - 금액은 원(KRW) 단위 정수로 변환하세요. "백만원", "천원" 등 단위가 표기돼 있으면 원 단위로 환산하세요.
 - 계정과목명은 원문 표기를 그대로 유지하고, 임의로 통합·축약하지 마세요.
 - 소계/합계 행("유동자산", "자산총계" 등)도 원본에 그 값이 명시돼 있다면 그대로 포함하세요.
-- 값을 확인할 수 없는 계정은 0으로 채우지 말고 생략하세요.
+- 각 계정의 values 배열 길이는 반드시 years 배열 길이와 정확히 같아야 합니다(연도 수만큼 값을
+  채우세요). 특정 연도 칸이 비어있거나 "-"로 표시돼 있으면 그 해에 잔액이 없다는 뜻이므로 0으로
+  기록하세요. 인쇄 상태가 나빠 특정 연도만 도저히 판독할 수 없는 경우에만 그 계정 전체(모든 연도)를
+  생략하세요 — values 배열 중간에 구멍을 만들면 안 됩니다(연도와 값이 밀려서 잘못 매칭됩니다).
 - balance_sheet에는 재무상태표 계정만, income_statement에는 손익계산서 계정만 넣으세요.
 - 출력하기 전에 자체 검산하세요: "자산총계=유동자산+비유동자산", "부채총계=유동부채+비유동부채",
   "자본총계=부채와자본총계-부채총계" 처럼 총계/소계 행은 그 하위 항목 합과 반드시 일치해야 합니다.
@@ -119,39 +122,51 @@ def _extract_financial_data(file_bytes, filename, api_key, model, status=None):
     raise last_error
 
 
-def _to_dataframe(entries, years):
-    rows = []
+def _validate_year_aligned(entries, years):
+    """values 배열 길이가 years와 다른 계정은 연도별 위치가 밀려 있다는 뜻이라(예: 특정
+    연도만 확인 못해 배열 중간이 비면), 그대로 쓰면 엉뚱한 연도에 값이 붙거나 있는 값이
+    조용히 누락될 위험이 있다. 그런 계정은 제외하고, 제외된 계정명을 함께 돌려줘서
+    사용자에게 알린다(프롬프트로 최대한 막지만, 모델이 규칙을 어겼을 때의 안전장치)."""
+    valid, dropped = [], []
     for entry in entries:
-        row = {"계정과목": str(entry.get("account", "")).strip()}
-        for year, value in zip(years, entry.get("values", [])):
-            row[year] = value
-        rows.append(row)
-    df = pd.DataFrame(rows, columns=["계정과목"] + list(years))
-    for year in years:
-        df[year] = pd.to_numeric(df[year], errors="coerce").fillna(0)
-    return df
+        if len(entry.get("values", [])) == len(years):
+            valid.append(entry)
+        else:
+            dropped.append(str(entry.get("account", "")).strip() or "(계정명 없음)")
+    return valid, dropped
 
 
 def _slice_entries_for_year(entries, all_years, year):
-    """여러 연도가 섞인 추출 결과에서 특정 연도 값만 뽑아 단일 연도 entries로 만든다."""
+    """여러 연도가 섞인 추출 결과에서 특정 연도 값만 뽑아 단일 연도 entries로 만든다.
+    code(계정 코드)가 있으면 함께 들고 가서, 이후 연도 간 자동 매칭에 쓴다."""
     idx = all_years.index(year)
     sliced = []
     for entry in entries:
         values = entry.get("values", [])
         if idx < len(values):
-            sliced.append({"account": entry.get("account", ""), "values": [values[idx]]})
+            sliced.append({
+                "account": entry.get("account", ""),
+                "code": entry.get("code"),
+                "values": [values[idx]],
+            })
     return sliced
 
 
 def _build_combined_rows(existing_rows, year_entries_map, sorted_years):
     """existing_rows(없으면 [])를 뼈대로, 여러 새 연도의 추출 결과를 연도 오름차순으로
     하나씩 자동매칭해 합친다. 나중 연도가 앞선 연도에서 새로 생긴 계정과도 매칭될 수 있도록
-    한 연도씩 순차적으로 처리한다.
+    한 연도씩 순차적으로 처리한다. 계정 코드가 확보되면(표준재무제표증명 등) 다음 연도
+    매칭에도 이어서 쓴다 — 라벨 표기 차이(예: "상품매출" vs "상품매출액")에 흔들리지 않는
+    가장 신뢰도 높은 매칭 기준이기 때문. (기존 RAW 파일에서 온 행은 코드가 없어 이 이점이
+    적용되지 않고, 기존 라벨 매칭으로 동작한다 — RAW 파일 자체엔 코드 열이 없기 때문.)
 
-    반환: [{"label", "row_index", "existing_values": {year: val}, "new_values": {year: val}}, ...]
+    반환: [{"label", "row_index", "code", "existing_values": {year: val}, "new_values": {year: val}}, ...]
     """
     combined = [
-        {"label": r["label"], "row_index": r["row_index"], "existing_values": dict(r["values"]), "new_values": {}}
+        {
+            "label": r["label"], "row_index": r["row_index"], "code": r.get("code"),
+            "existing_values": dict(r["values"]), "new_values": {},
+        }
         for r in existing_rows
     ]
     for yr in sorted_years:
@@ -159,16 +174,19 @@ def _build_combined_rows(existing_rows, year_entries_map, sorted_years):
         if not entries:
             continue
         match_rows = [
-            {"label": r["label"], "row_index": r["row_index"], "values": r["existing_values"]}
+            {"label": r["label"], "row_index": r["row_index"], "code": r.get("code"), "values": r["existing_values"]}
             for r in combined
         ]
         plan = raw_template.auto_match(match_rows, entries)
         for i in range(len(combined)):
             combined[i]["new_values"][yr] = plan[i]["new_value"]
+            if not combined[i].get("code") and plan[i].get("code"):
+                combined[i]["code"] = plan[i]["code"]
         for extra in plan[len(combined):]:
             combined.append({
                 "label": extra["label"],
                 "row_index": None,
+                "code": extra.get("code"),
                 "existing_values": {},
                 "new_values": {yr: extra["new_value"]},
             })
@@ -213,6 +231,8 @@ def _run_conversion(source_files, existing_file):
         model = gemini_model()
         bs_by_year, is_by_year = {}, {}
         skipped_files = []
+        dropped_accounts = []  # [(파일명, [계정명, ...]), ...] — 연도별 값 수가 안 맞아 제외됨
+        year_sources = {}  # 연도 -> 그 연도를 제공한 파일명 목록 (같은 연도 중복 업로드 감지용)
 
         with st.spinner("파일을 분석하여 표준 형식으로 변환하고 있습니다..."):
             for idx, f in enumerate(source_files):
@@ -225,13 +245,32 @@ def _run_conversion(source_files, existing_file):
                 if not yrs:
                     skipped_files.append(f.name)
                     continue
+
+                bs_entries, bs_dropped = _validate_year_aligned(data.get("balance_sheet", []), yrs)
+                is_entries, is_dropped = _validate_year_aligned(data.get("income_statement", []), yrs)
+                if bs_dropped or is_dropped:
+                    dropped_accounts.append((f.name, bs_dropped + is_dropped))
+
                 for yr in yrs:
-                    bs_by_year[yr] = _slice_entries_for_year(data.get("balance_sheet", []), yrs, yr)
-                    is_by_year[yr] = _slice_entries_for_year(data.get("income_statement", []), yrs, yr)
+                    year_sources.setdefault(yr, []).append(f.name)
+                    bs_by_year[yr] = _slice_entries_for_year(bs_entries, yrs, yr)
+                    is_by_year[yr] = _slice_entries_for_year(is_entries, yrs, yr)
         status_area.empty()
 
         if skipped_files:
             st.warning(f"연도 정보를 인식하지 못해 건너뛴 파일: {', '.join(skipped_files)}")
+
+        if dropped_accounts:
+            detail = "; ".join(f"{name}: {', '.join(accs)}" for name, accs in dropped_accounts)
+            st.warning(
+                "일부 계정은 연도별 금액 개수가 맞지 않아(일부 연도만 판독됨) 자동 반영에서 "
+                f"제외했습니다 — 원본을 직접 확인해 아래 표에 수동으로 추가해주세요. ({detail})"
+            )
+
+        duplicate_years = {yr: names for yr, names in year_sources.items() if len(names) > 1}
+        if duplicate_years:
+            detail = "; ".join(f"{yr}년({', '.join(names)})" for yr, names in duplicate_years.items())
+            st.warning(f"같은 연도가 여러 파일에 중복으로 들어있어 마지막 파일 값으로 덮어썼습니다 — 확인해주세요: {detail}")
 
         sorted_new_years = sorted(bs_by_year.keys())
         if not sorted_new_years:

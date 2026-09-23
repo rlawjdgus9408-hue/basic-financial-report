@@ -41,6 +41,27 @@ def _plain_text_ai_answer(answer):
     return answer.strip()
 
 
+def _quick_style_check(text):
+    """종합의견에 반영하기 전, docs/es_guideline.md 규칙 중 scripts/check_es.py가 프로그램적으로
+    검사하는 항목(금지 표현/영어 약어/백만원 단위/화살표 개수)만 빠르게 재사용해 걸러본다.
+
+    Claude Code로 ES를 쓸 때는 그 스크립트를 전체(글자수·단락 구성 포함) 돌리도록 스킬이 강제하지만,
+    이 앱의 AI 채팅은 Gemini가 바로 답을 생성해 반영하는 구조라 그 검증을 거치지 않는다 — 여기서
+    최소한의 표기 규칙 위반만이라도 앱 안에서 바로 잡아준다. 통과 못해도 반영 자체는 막지 않고
+    참고용 경고만 보여준다(최종 판단은 사람 몫)."""
+    try:
+        from scripts import check_es as _es
+    except ImportError:
+        return []
+
+    report = _es.Report()
+    _es.check_banned_phrases(text, report)
+    _es.check_abbreviations(text, report)
+    _es.check_million_won(text, report)
+    _es.check_arrows(text, report)
+    return report.errors
+
+
 def _system_instruction():
     """이 채팅은 곧 기초재무진단보고서의 종합의견(Executive Summary)을 작성/수정하는 용도이므로,
     docs/es_guideline.md의 ES 작성 규칙을 항상 시스템 지시로 강제한다."""
@@ -137,7 +158,9 @@ def render_ai_comment_chat():
                         "",
                     )
                     if last_answer:
-                        st.session_state["txt_exec"] = _plain_text_ai_answer(last_answer)
+                        cleaned = _plain_text_ai_answer(last_answer)
+                        st.session_state["txt_exec"] = cleaned
+                        st.session_state["ai_comment_style_warnings"] = _quick_style_check(cleaned)
                         st.rerun()
 
 
@@ -184,6 +207,14 @@ def render_comments():
 
 
     render_ai_comment_chat()
+
+    # AI 답변을 방금 반영했다면, ES 작성 규칙(§4) 위반 여부를 한 번 알려준다 (1회성 — 표시 후 바로 지움).
+    style_warnings = st.session_state.pop("ai_comment_style_warnings", None)
+    if style_warnings:
+        st.warning(
+            "방금 반영한 내용에 ES 작성 규칙 위반이 있습니다 — 직접 확인해 고쳐주세요:\n"
+            + "\n".join(f"- {w}" for w in style_warnings)
+        )
 
     # 글머리 자동 추가: 위젯 렌더링 전에 session_state 값을 미리 처리
     _current = st.session_state.get('txt_exec', st.session_state.get('exec_summary', ''))

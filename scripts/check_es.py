@@ -49,6 +49,12 @@ MIN_ENDING_VARIETY = 4  # §4-5
 
 SERVICE_NAMES = ["그로스파이낸스", "구독형 재무팀", "CFO 서비스"]  # §2-3
 
+# §3-1 "ES 전체 수치는 핵심 5~10개로 제한" / "같은 수치를 두 단락 이상 반복하지 않는다" 검사용.
+# 금액·비율·배수 표기만 잡는다("2024년"처럼 단순 연도 표기는 "핵심 수치"가 아니라서 제외) —
+# 완벽한 탐지는 아니고 대략적인 감으로 WARN 여부만 판단하는 참고용 카운트다.
+NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:%|억|천만|백만|배)")
+NUMERIC_COUNT_MIN, NUMERIC_COUNT_MAX = 5, 10
+
 
 class Report:
     def __init__(self):
@@ -144,6 +150,28 @@ def check_ending_variety(paragraphs, report):
         )
 
 
+def check_numeric_density(text, report):
+    """§3-1 'ES 전체 수치는 핵심 5~10개로 제한한다' — 참고용 카운트라 WARN만 남긴다."""
+    n = len(NUMBER_RE.findall(text))
+    if n < NUMERIC_COUNT_MIN or n > NUMERIC_COUNT_MAX:
+        report.warn(
+            f"금액·비율 수치 표현 {n}개 — 핵심 {NUMERIC_COUNT_MIN}~{NUMERIC_COUNT_MAX}개 권장 범위를 "
+            f"벗어났습니다 (§3-1). 단순 카운트라 참고만 하고, 실제로 핵심 수치인지는 직접 확인하세요."
+        )
+
+
+def check_repeated_numbers(paragraphs, report):
+    """§3-1 '같은 수치를 두 단락 이상에서 반복하지 않는다'."""
+    seen_in = {}
+    for i, p in enumerate(paragraphs, start=1):
+        for num in set(NUMBER_RE.findall(p)):
+            seen_in.setdefault(num, set()).add(i)
+    repeated = {num: paras for num, paras in seen_in.items() if len(paras) > 1}
+    if repeated:
+        detail = ", ".join(f"'{num}'({'/'.join(str(p) for p in sorted(paras))}단락)" for num, paras in repeated.items())
+        report.warn(f"같은 수치가 여러 단락에서 반복됩니다 — 한 수치는 한 번만 쓰세요 (§3-1): {detail}")
+
+
 def check_numbered_bullets(text, report):
     if re.search(r"[①②③④⑤]", text):
         report.warn("①②③ 번호 기호 발견 — 보완사항은 번호 없이 자연어로 이어써야 합니다 (§2-3).")
@@ -166,6 +194,8 @@ def run(path):
     check_million_won(text, report)
     check_arrows(text, report)
     check_ending_variety(paragraphs, report)
+    check_numeric_density(text, report)
+    check_repeated_numbers(paragraphs, report)
     check_numbered_bullets(text, report)
     check_service_names(text, report)
 
