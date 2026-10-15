@@ -111,6 +111,7 @@ def load_ksic_data():
 def render_company_info():
     """기업 상세 정보 입력 렌더링"""
     st.markdown("### 1. 기업 상세 정보 입력")
+    st.caption(":red[*] 표시 항목(진단 기업명·연락처·사업자번호)은 다음 단계로 넘어가기 위해 반드시 입력해야 합니다.")
 
     # 연락처/사업개시일/사업자번호: 숫자만 입력해도 하이픈이 자동으로 붙는다
     # (커서가 필드를 벗어나 rerun되는 시점에 반영됨).
@@ -141,7 +142,7 @@ def render_company_info():
             st.session_state.input_biz_minor = minor_list[0] if minor_list else ""
     
     with col_info1:
-        company_name = _clearable_text_input("진단 기업명", st.session_state.company_name, "예: 주식회사 알파브라더스", "input_co_name")
+        company_name = _clearable_text_input("진단 기업명 :red[*]", st.session_state.company_name, "예: 주식회사 알파브라더스", "input_co_name")
 
         # 업종: 드롭다운 or 직접 입력 토글
         if 'biz_type_mode' not in st.session_state:
@@ -184,10 +185,10 @@ def render_company_info():
         
         ceo_name = _clearable_text_input("대표자명", st.session_state.ceo_name, "예: 홍길동", "input_ceo_name")
         biz_start_date = _clearable_text_input("사업개시일", st.session_state.biz_start_date, "예: 2024-01-01", "input_biz_start")
-        biz_no = _clearable_text_input("사업자번호", st.session_state.biz_no, "예: 000-00-00000", "input_biz_no")
+        biz_no = _clearable_text_input("사업자번호 :red[*]", st.session_state.biz_no, "예: 000-00-00000", "input_biz_no")
 
     with col_info2:
-        phone = _clearable_text_input("연락처", st.session_state.phone, "예: 000-0000-0000", "input_phone")
+        phone = _clearable_text_input("연락처 :red[*]", st.session_state.phone, "예: 000-0000-0000", "input_phone")
 
         # 이메일: 한 줄로 표시 (도메인 앞에 @)
         col_email1, col_email2, col_email3 = st.columns([3, 1, 2])

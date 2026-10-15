@@ -46,7 +46,14 @@ def _keep_sidebar_open():
 
 
 def _render_step_nav():
-    """목차: 클릭 시 해당 단계로 즉시 이동(완료 여부와 무관하게 자유 이동 가능)"""
+    """목차: 완료한 단계까지는 자유롭게 이동할 수 있지만, 필수 항목(1단계 신원 정보,
+    2단계 사전진단)이 비어있는 단계보다 뒤로는 못 건너뛴다. 이 제한이 없으면 1단계를
+    비워둔 채 목차에서 곧장 "3. 자료 업로드"나 "4. 최종보고서 생성"으로 이동해, 신원
+    확인 없이 AI 호출(비용 발생)을 돌릴 수 있게 된다 — render_step_nav의 '다음 단계'
+    버튼과 같은 기준(wizard.max_reachable_step)을 공유해 두 경로 모두 막는다."""
+    from sections.wizard import max_reachable_step
+    reachable = max_reachable_step()
+
     st.sidebar.markdown(
         '<div style="font-size:11px;font-weight:700;color:#898F91;text-transform:uppercase;'
         'letter-spacing:.08em;margin:4px 0 6px;">목차</div>',
@@ -54,8 +61,14 @@ def _render_step_nav():
     )
     for i, label in enumerate(STEP_LABELS, start=1):
         is_active = st.session_state.get('current_step', 1) == i
-        if st.sidebar.button(label, key=f"navbtn_{i}", use_container_width=True,
-                              type="primary" if is_active else "secondary"):
+        is_locked = i > reachable
+        if st.sidebar.button(
+            f"🔒 {label}" if is_locked else label,
+            key=f"navbtn_{i}", use_container_width=True,
+            type="primary" if is_active else "secondary",
+            disabled=is_locked,
+            help="이전 단계의 필수 항목을 먼저 채워주세요." if is_locked else None,
+        ):
             st.session_state['current_step'] = i
             st.rerun()
     st.sidebar.markdown("---")
@@ -106,9 +119,28 @@ def _render_temp_save_load():
         st.rerun()
 
 
+def _is_admin():
+    """고객용 배포판은 실제 외부 고객이 들어오는 화면이라, 운영 점검 도구(API 키 확인 등)를
+    아무나 보게 두면 키 등록 여부·끝자리가 노출되고 '연결 테스트' 버튼으로 누구나 과금되는
+    Gemini API 호출을 트리거할 수 있다. secrets.toml에 ADMIN_TOKEN을 설정하고 그 값을
+    ?admin=<토큰> 쿼리파라미터로 넘겼을 때만 통과시킨다 — 토큰 미설정 시 기본값은 '막음'이다."""
+    try:
+        admin_token = st.secrets.get("ADMIN_TOKEN", "")
+    except Exception:
+        admin_token = ""
+    if not admin_token:
+        return False
+    try:
+        query_token = st.query_params.get("admin", "")
+    except Exception:
+        query_token = st.experimental_get_query_params().get("admin", [""])[0]
+    return query_token == admin_token
+
+
 def _render_api_key_check():
     """배포 환경(Streamlit Cloud Secrets)에 Gemini API 키가 제대로 들어갔는지 바로 확인하는 도구.
-    파일 업로드까지 가지 않아도 키 등록 여부/실제 호출 가능 여부를 바로 알 수 있게 한다."""
+    파일 업로드까지 가지 않아도 키 등록 여부/실제 호출 가능 여부를 바로 알 수 있게 한다.
+    _is_admin()을 통과한 경우에만 호출되므로 일반 방문자에게는 보이지 않는다."""
     from sections.ai_client import configured_value, gemini_model
 
     with st.sidebar.expander("⚙️ API 키 확인"):
@@ -130,6 +162,29 @@ def _render_api_key_check():
                     st.error(f"연결 실패: {error}")
 
 
+def _render_submission_log():
+    """자료 업로드/보고서 생성 시점마다 쌓인 제출 이력(회사명·연락처·일시)을 조회하는 패널.
+    _is_admin()을 통과한 경우에만 호출되므로 일반 방문자에게는 보이지 않는다."""
+    from sections import submission_log
+
+    with st.sidebar.expander("📋 제출 이력 조회"):
+        if not submission_log.is_configured():
+            st.caption("구글 시트 연동이 설정되지 않았습니다 (secrets.toml의 gcp_service_account / "
+                       "SUBMISSION_SHEET_ID 확인 필요).")
+            return
+
+        if st.button("새로고침", key="btn_submission_log_refresh", use_container_width=True):
+            submission_log.fetch_all.clear()
+
+        rows = submission_log.fetch_all()
+        if not rows:
+            st.caption("아직 기록된 제출 이력이 없습니다.")
+            return
+
+        import pandas as pd
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 def render_sidebar_chrome():
     """사이드바 상단 공통 영역: 제목 + 목차 + 다시 실행 + 임시저장/불러오기 + API 키 확인"""
     st.sidebar.title("메뉴")
@@ -144,5 +199,7 @@ def render_sidebar_chrome():
     st.sidebar.markdown("---")
     _render_temp_save_load()
 
-    st.sidebar.markdown("---")
-    _render_api_key_check()
+    if _is_admin():
+        st.sidebar.markdown("---")
+        _render_api_key_check()
+        _render_submission_log()

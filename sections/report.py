@@ -16,6 +16,7 @@ from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
 
 from sections import email_notify
+from sections import submission_log
 
 _CUSTOMER_TEMPLATE = Path(__file__).parent.parent / "assets" / "templates" / "[그로스파이낸스]_고객용_템플릿.docx"
 
@@ -108,18 +109,31 @@ def render_report_sidebar(company_info, template_file, check_results, score,
 
         my_bar.empty()
 
-        report_bytes = _build_report_bytes(
-            company_info, template_path, check_results, score,
-            selected_dirs, dir_etc, selected_mats, exec_summary,
-        )
-
-        file_name_prefix = company_info.get('company_name', '') or "진단기업"
-        st.session_state['report_bytes'] = report_bytes
-        created_date = datetime.datetime.now().strftime('%Y%m%d')
-        st.session_state['report_filename'] = f"{file_name_prefix}_재무진단보고서_{created_date}.docx"
-        st.session_state['report_company'] = file_name_prefix
-        st.session_state.pop('report_email_sent', None)
-        st.sidebar.success("보고서 생성 완료!")
+        # 고객용 흐름은 업로드와 보고서 생성 사이에 사람이 데이터를 검토하는 화면이 없어,
+        # 예상과 다른 추출 결과나 템플릿 변수 불일치가 그대로 보고서 생성 단계에서 터질 수
+        # 있다 — 여기서 막지 않으면 고객 화면에 날것의 에러 트레이스백이 그대로 노출된다.
+        try:
+            report_bytes = _build_report_bytes(
+                company_info, template_path, check_results, score,
+                selected_dirs, dir_etc, selected_mats, exec_summary,
+            )
+        except Exception as error:
+            st.sidebar.error(
+                f"보고서 생성 중 오류가 발생했습니다: {error}\n"
+                "잠시 후 다시 시도하거나, 계속되면 그로스파이낸스에 문의해 주세요."
+            )
+        else:
+            file_name_prefix = company_info.get('company_name', '') or "진단기업"
+            st.session_state['report_bytes'] = report_bytes
+            created_date = datetime.datetime.now().strftime('%Y%m%d')
+            st.session_state['report_filename'] = f"{file_name_prefix}_재무진단보고서_{created_date}.docx"
+            st.session_state['report_company'] = file_name_prefix
+            st.session_state.pop('report_email_sent', None)
+            st.sidebar.success("보고서 생성 완료!")
+            submission_log.log_event(
+                "보고서 생성", company_info.get('company_name', ''),
+                company_info.get('phone', ''), company_info.get('email', ''),
+            )
 
     auto_es_warnings = st.session_state.get('auto_es_warnings')
     if auto_es_warnings:

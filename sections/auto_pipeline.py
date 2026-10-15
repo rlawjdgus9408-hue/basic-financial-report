@@ -140,8 +140,15 @@ def generate_exec_summary(api_key, model):
 
 
 def pipeline_key(years, df_bs, df_is):
-    """같은 업로드 결과에 대해 파이프라인을 중복 실행(=AI 재호출)하지 않기 위한 식별 키."""
-    return f"{list(years)}|{len(df_bs)}|{len(df_is)}"
+    """같은 업로드 결과에 대해 파이프라인을 중복 실행(=AI 재호출)하지 않기 위한 식별 키.
+
+    연도/행 개수 같은 '모양'만 비교하면, 내용이 다른데 모양만 같은 재업로드(예: 숫자를 고쳐
+    같은 연도 수·같은 행 수로 재업로드)에 이전 분석 결과(지표·그래프·AI 종합의견)를 그대로
+    재사용해버리는 사고가 날 수 있다 — 실제 셀 값까지 해시에 반영한다."""
+    import hashlib
+
+    payload = f"{list(years)}|{df_bs.to_csv()}|{df_is.to_csv()}".encode("utf-8")
+    return hashlib.md5(payload).hexdigest()
 
 
 def run_auto_analysis(df_bs, df_is, years):
@@ -150,23 +157,34 @@ def run_auto_analysis(df_bs, df_is, years):
 
     AI 호출이 실패해도(키 미설정, 네트워크 오류 등) 예외를 밖으로 던지지 않는다 — 종합의견만
     비운 채로 두고 사유를 session_state['auto_pipeline_error']에 남겨, 나머지(지표·그래프)는
-    그대로 보고서에 쓸 수 있게 한다."""
+    그대로 보고서에 쓸 수 있게 한다. 고객용 흐름은 내부용과 달리 업로드와 보고서 생성 사이에
+    사람이 추출 결과를 검토하는 화면이 없으므로, 지표 계산 자체(AI 추출 결과가 예상과 다른
+    모양일 때 등)가 실패해도 여기서 막아 화면이 통째로 깨지지 않게 한다."""
     st.session_state.pop('auto_pipeline_error', None)
 
-    bs_metrics, is_metrics, common_metrics = compute_all_metrics(df_bs, df_is, years)
-    st.session_state['bs_metrics'] = bs_metrics
-    st.session_state['is_metrics'] = is_metrics
-    st.session_state['common_metrics'] = common_metrics
-    st.session_state['years'] = years
+    try:
+        bs_metrics, is_metrics, common_metrics = compute_all_metrics(df_bs, df_is, years)
+        st.session_state['bs_metrics'] = bs_metrics
+        st.session_state['is_metrics'] = is_metrics
+        st.session_state['common_metrics'] = common_metrics
+        st.session_state['years'] = years
 
-    all_selected = sorted(
-        {i for inds in RECOMMENDED_COMBOS.values() for i in inds},
-        key=_ALL_INDICATOR_ORDER.index,
-    )
-    st.session_state['selected_indicators'] = _split_selected_indicators(all_selected)
+        all_selected = sorted(
+            {i for inds in RECOMMENDED_COMBOS.values() for i in inds},
+            key=_ALL_INDICATOR_ORDER.index,
+        )
+        st.session_state['selected_indicators'] = _split_selected_indicators(all_selected)
 
-    _, table_text = build_indicator_table(all_selected, years, bs_metrics, is_metrics, common_metrics)
-    st.session_state['selected_indicators_table'] = table_text
+        _, table_text = build_indicator_table(all_selected, years, bs_metrics, is_metrics, common_metrics)
+        st.session_state['selected_indicators_table'] = table_text
+    except Exception as error:
+        st.session_state['auto_pipeline_error'] = f"재무지표 계산 중 오류: {error}"
+        st.session_state['bs_metrics'] = st.session_state['is_metrics'] = st.session_state['common_metrics'] = {}
+        st.session_state['selected_indicators_table'] = ''
+        st.session_state['auto_chart_images'] = {}
+        st.session_state['txt_exec'] = ''
+        st.session_state['exec_summary'] = ''
+        return
 
     try:
         st.session_state['auto_chart_images'] = build_chart_images(

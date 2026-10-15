@@ -27,12 +27,15 @@ from sections.wizard import (
     render_step_intro,
     render_sidebar_progress,
     render_step_nav,
+    is_step_complete,
+    step_missing_items,
 )
 from sections.info import render_company_info
 from sections.customer_upload import render_customer_upload
 from sections.diagnosis import render_diagnosis
 from sections.auto_pipeline import run_auto_analysis, pipeline_key
 from sections.report import render_report_generation, render_report_sidebar
+from sections import submission_log
 
 # 페이지 설정
 st.set_page_config(page_title="그로스파이낸스 재무진단 시스템", layout="wide", initial_sidebar_state="expanded")
@@ -83,15 +86,31 @@ with st.container(key="step2"):
 # 3. 자료 업로드 (업로드 즉시 AI가 표준 데이터로 변환)
 with st.container(key="step3"):
     render_step_intro(3)
-    df_bs, df_is, years = render_customer_upload()
 
-    if df_bs is not None and df_is is not None and years:
-        # 같은 업로드 결과에 대해 파이프라인(특히 AI 종합의견 생성)을 중복 실행하지 않는다.
-        _pkey = pipeline_key(years, df_bs, df_is)
-        if st.session_state.get('auto_pipeline_done_for') != _pkey:
-            with st.spinner("재무지표를 계산하고 종합의견을 작성하고 있습니다..."):
-                run_auto_analysis(df_bs, df_is, years)
-            st.session_state['auto_pipeline_done_for'] = _pkey
+    # 1·2단계 필수 항목(신원 정보·사전진단)을 다 채웠을 때만 업로드 위젯 자체를 보여준다.
+    # 버튼/사이드바 목차로 단계 이동을 막는 것만으로는, 한 번 3단계에 도달한 뒤 1·2단계로
+    # 돌아가 입력값을 지워도 여전히 업로드가 가능한 틈이 생긴다 — 실제로 AI 호출(비용 발생)이
+    # 일어나는 지점에서 다시 한 번 확인해야 "무료로 막 돌리는" 우회를 확실히 막을 수 있다.
+    if not (is_step_complete(1) and is_step_complete(2)):
+        missing = step_missing_items(1) + step_missing_items(2)
+        st.warning("⚠️ 자료를 업로드하려면 먼저 아래 항목을 채워주세요: " + ", ".join(missing))
+        if st.button("← 1단계로 이동", key="btn_goto_step1_from_step3"):
+            st.session_state['current_step'] = 1
+            st.rerun()
+    else:
+        df_bs, df_is, years = render_customer_upload()
+
+        if df_bs is not None and df_is is not None and years:
+            # 같은 업로드 결과에 대해 파이프라인(특히 AI 종합의견 생성)을 중복 실행하지 않는다.
+            _pkey = pipeline_key(years, df_bs, df_is)
+            if st.session_state.get('auto_pipeline_done_for') != _pkey:
+                with st.spinner("재무지표를 계산하고 종합의견을 작성하고 있습니다..."):
+                    run_auto_analysis(df_bs, df_is, years)
+                st.session_state['auto_pipeline_done_for'] = _pkey
+                submission_log.log_event(
+                    "자료 업로드", company_info.get('company_name', ''),
+                    company_info.get('phone', ''), company_info.get('email', ''),
+                )
 
     render_step_nav(3)
 

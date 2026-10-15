@@ -18,6 +18,58 @@ STEP_INTROS = {
 }
 
 
+# 무료 AI 호출(파일 업로드 분석·종합의견 생성)을 아무나 익명으로 막 돌리거나 염탐 목적으로
+# 써보지 못하게, 최소한의 신원 확인 항목을 채워야만 다음 단계로 넘어갈 수 있게 막는다.
+_STEP1_REQUIRED_FIELDS = [
+    ("input_co_name", "진단 기업명"),
+    ("input_phone", "연락처"),
+    ("input_biz_no", "사업자번호"),
+]
+_STEP2_QUESTION_COUNT = 10
+
+
+def _step1_missing_items():
+    return [
+        label for key, label in _STEP1_REQUIRED_FIELDS
+        if not (st.session_state.get(key) or "").strip()
+    ]
+
+
+def _step2_missing_items():
+    missing = []
+    unanswered = sum(1 for i in range(_STEP2_QUESTION_COUNT) if st.session_state.get(f"q{i}") is None)
+    if unanswered:
+        missing.append(f"사전 진단 질문 {unanswered}개 미응답")
+    has_direction = bool(st.session_state.get("sel_dir_btn")) or bool((st.session_state.get("in_dir_etc") or "").strip())
+    if not has_direction:
+        missing.append("재무관리 방향성")
+    return missing
+
+
+def step_missing_items(step):
+    """해당 단계에서 아직 채우지 않은 필수 항목 목록(빈 리스트면 완료)."""
+    if step == 1:
+        return _step1_missing_items()
+    if step == 2:
+        return _step2_missing_items()
+    return []
+
+
+def is_step_complete(step):
+    return not step_missing_items(step)
+
+
+def max_reachable_step(total=TOTAL_WIZARD_STEPS):
+    """1단계부터 순서대로 확인해, 처음으로 필수 항목이 비어있는 단계까지만 이동을 허용한다.
+    사이드바 목차에서 미완료 단계를 건너뛰어 곧장 뒷단계(특히 AI 호출이 일어나는 업로드·
+    보고서 생성)로 가는 것을 막기 위한 용도 — render_step_nav의 '다음 단계' 버튼뿐 아니라
+    sections.sidebar의 목차 버튼도 이 값을 기준으로 잠금 여부를 판단한다."""
+    for s in range(1, total + 1):
+        if not is_step_complete(s):
+            return s
+    return total + 1
+
+
 def render_step_intro(step):
     text = STEP_INTROS.get(step)
     if not text:
@@ -66,6 +118,10 @@ def render_sidebar_progress(step, total=TOTAL_WIZARD_STEPS):
 
 
 def render_step_nav(step, total=TOTAL_WIZARD_STEPS):
+    missing = step_missing_items(step)
+    if missing:
+        st.warning("⚠️ 다음 단계로 넘어가려면 아래 항목을 먼저 채워주세요: " + ", ".join(missing))
+
     col_prev, col_next = st.columns([1, 2])
     with col_prev:
         if step > 1:
@@ -74,6 +130,7 @@ def render_step_nav(step, total=TOTAL_WIZARD_STEPS):
                 st.rerun()
     with col_next:
         next_label = "다음 단계로 →" if step < total else "입력 완료, 보고서 생성하러 가기 →"
-        if st.button(next_label, key=f"btn_next_{step}", type="primary", use_container_width=True):
+        if st.button(next_label, key=f"btn_next_{step}", type="primary", use_container_width=True,
+                     disabled=bool(missing)):
             st.session_state['current_step'] = step + 1
             st.rerun()

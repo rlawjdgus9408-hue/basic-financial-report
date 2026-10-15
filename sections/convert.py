@@ -7,6 +7,7 @@ AI가 재무상태표/손익계산서를 추출한다. 여러 연도가 각각 �
 기존 RAW 엑셀이 있으면 새 연도 컬럼들을 이어붙이고, 없으면 새 RAW 엑셀을 만든다. 두 경우 모두
 결과를 표로 보여주고 사용자가 검토/수정한 뒤에만 반영한다.
 """
+import hashlib
 import io
 import json
 import time
@@ -321,8 +322,12 @@ def _run_conversion(source_files, existing_file):
 
 
 def _file_key(source_files, existing_file):
-    src = "|".join(f"{f.name}:{f.size}" for f in source_files)
-    existing = f"{existing_file.name}:{existing_file.size}" if existing_file is not None else "none"
+    """파일명+크기만으로는 '같은 이름·같은 크기, 다른 내용'(예: 수정 후 재업로드)을 구분하지
+    못해 이전 분석 결과를 잘못 재사용하는 사고로 이어질 수 있다 — 내용 해시까지 섞는다."""
+    def _one(f):
+        return f"{f.name}:{f.size}:{hashlib.md5(f.getvalue()).hexdigest()}"
+    src = "|".join(_one(f) for f in source_files)
+    existing = _one(existing_file) if existing_file is not None else "none"
     return f"{src}||{existing}"
 
 

@@ -37,6 +37,7 @@ def render_diagnosis():
     """사전 진단 및 관리 방향성 렌더링"""
     st.markdown("---")
     st.markdown("### 2. 사전 진단 및 관리 방향성")
+    st.caption(":red[*] 표시는 다음 단계로 넘어가기 위해 반드시 응답/선택해야 하는 항목입니다.")
 
     questions = [
         "재무성과(손익/자금 등) 현황 분석/보고(Report)를 매월 받으십니까?",
@@ -53,11 +54,15 @@ def render_diagnosis():
 
     check_results = []
     for i, q in enumerate(questions):
-        current = st.session_state.get(f'q{i}', '아니오')
+        # 기본값을 '아니오'로 깔아두면 사용자가 실제로 읽지 않고 넘어가도 "응답 완료"로
+        # 잘못 집계된다 — 직접 버튼을 눌러야만 응답한 것으로 보고, 그 전까지는 None(미응답)
+        # 으로 둬 다음 단계 이동을 막는다.
+        current = st.session_state.get(f'q{i}')
+        marker = ' <span style="color:#FF4B4B;">*</span>' if current is None else ''
 
         st.markdown(
             f'<p style="font-size:14px; font-weight:600; color:#F2F2F2; '
-            f'margin:18px 0 8px 0;">{i+1}. {q}</p>',
+            f'margin:18px 0 8px 0;">{i+1}. {q}{marker}</p>',
             unsafe_allow_html=True
         )
 
@@ -89,7 +94,7 @@ def render_diagnosis():
 
     st.caption("재무관리를 하시는 목적을 선택해주세요. 기타 사항의 경우 아래에 직접 작성해주세요.")
     selected_dirs = _button_multiselect(
-        "재무관리 방향성",
+        '재무관리 방향성 <span style="color:#FF4B4B;">*</span>',
         ["안정적 성장", "투자 유치 (사업확장)", "IPO/M&A 등 Exit"],
         "sel_dir_btn",
         columns=3
