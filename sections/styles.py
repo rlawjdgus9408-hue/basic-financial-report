@@ -262,3 +262,40 @@ section[data-testid="stSidebar"] > div > div > button {
 @keyframes gf-shimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 </style>
 """, unsafe_allow_html=True)
+
+
+def render_copyright_footer():
+    """모든 단계 화면 맨 아래 고정으로 보이는 저작권/무단수집 금지 문구.
+    step1~4 컨테이너 밖(main.py에서 전체 렌더링이 끝난 뒤)에 호출해야, 단계별로
+    컨테이너를 숨기는 CSS(.st-key-stepN)의 영향을 받지 않고 항상 보인다."""
+    st.markdown("""
+    <div style="margin-top:40px; padding:16px 0; border-top:1px solid #2A2A2A;
+                font-size:11px; line-height:1.6; color:#6B7280; text-align:center;">
+        © GrowthFinance(그로스파이낸스). 본 사이트의 콘텐츠·화면 구성·분석 결과물은
+        저작권법의 보호를 받으며, 사전 서면 동의 없는 무단 복제·크롤링·스크래핑·재배포를
+        금지합니다.
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def inject_noindex_meta():
+    """구글 등 검색엔진이 고객용 배포판을 색인(검색결과 노출)하거나 자동 크롤링하지 못하게
+    <meta name="robots" content="noindex, nofollow"> 를 심는다. Streamlit Cloud는 루트
+    경로에 커스텀 robots.txt를 둘 방법이 없어서, sections.sidebar._keep_sidebar_open()과
+    같은 방식(components.html로 부모 문서의 <head>에 직접 주입)을 쓴다. 이미 사이트
+    주소를 아는 사람의 수동 접속 자체를 막지는 못하지만, 검색 노출/자동 크롤러의 발견
+    가능성은 크게 줄여준다."""
+    import streamlit.components.v1 as components
+
+    components.html("""
+<script>
+(function addNoIndexMeta() {
+    var doc = window.parent.document;
+    if (doc.querySelector('meta[name="robots"]')) return;
+    var meta = doc.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex, nofollow, noarchive';
+    doc.head.appendChild(meta);
+})();
+</script>
+""", height=0)

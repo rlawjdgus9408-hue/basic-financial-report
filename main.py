@@ -19,7 +19,7 @@
 """
 import streamlit as st
 
-from sections.styles import inject_global_css
+from sections.styles import inject_global_css, inject_noindex_meta, render_copyright_footer
 from sections.session_state import init_session_state
 from sections.sidebar import render_sidebar_chrome
 from sections.wizard import (
@@ -41,6 +41,7 @@ from sections import submission_log
 st.set_page_config(page_title="그로스파이낸스 재무진단 시스템", layout="wide", initial_sidebar_state="expanded")
 
 inject_global_css()
+inject_noindex_meta()
 render_sidebar_chrome()
 
 _header_company = st.session_state.get('input_co_name') or st.session_state.get('company_name')
@@ -142,3 +143,5 @@ render_report_sidebar(
     selected_mats=selected_mats,
     exec_summary=exec_summary,
 )
+
+render_copyright_footer()

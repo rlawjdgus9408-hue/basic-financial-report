@@ -6,6 +6,7 @@ Section 4 (고객용): 최종보고서 생성
 session_state에 채워뒀으므로, 여기서는 그 결과를 고객용 템플릿에 그대로 채워 넣기만 한다.
 보고서가 만들어지면 (SMTP 설정이 돼 있을 때) 내부 담당자에게 메일로도 전송할 수 있다.
 """
+import hashlib
 import io
 import time
 import datetime
@@ -83,6 +84,20 @@ def _build_report_bytes(company_info, template_path, check_results, score,
         context[var] = InlineImage(doc, io.BytesIO(png_bytes), width=Mm(150)) if png_bytes else ""
 
     doc.render(context)
+
+    # 화면에는 "AI 자동 생성" 안내 문구만 보이고 실제 파일에는 아무 표시가 안 남아있었다 —
+    # 파일만 외부로 유출/재배포되는 경우에도 출처를 추적할 수 있도록, 눈에 보이진 않지만
+    # 문서 속성(파일 정보)에 출처·생성시각·문서ID를 남긴다. 레이아웃에 영향 없음.
+    generated_at = datetime.datetime.now()
+    doc_id = hashlib.sha1(
+        f"{company_info.get('company_name', '')}|{generated_at.isoformat()}".encode("utf-8")
+    ).hexdigest()[:12]
+    doc.docx.core_properties.author = "GrowthFinance(그로스파이낸스)"
+    doc.docx.core_properties.comments = (
+        f"그로스파이낸스 기초재무진단 자동분석 시스템 생성 문서 · "
+        f"생성일시 {generated_at.strftime('%Y-%m-%d %H:%M:%S')} · 문서ID {doc_id}"
+    )
+
     output = io.BytesIO()
     doc.save(output)
     return output.getvalue()
