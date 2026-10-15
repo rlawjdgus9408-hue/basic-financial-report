@@ -118,9 +118,15 @@ def render_sidebar_progress(step, total=TOTAL_WIZARD_STEPS):
 
 
 def render_step_nav(step, total=TOTAL_WIZARD_STEPS):
-    missing = step_missing_items(step)
-    if missing:
-        st.warning("⚠️ 다음 단계로 넘어가려면 아래 항목을 먼저 채워주세요: " + ", ".join(missing))
+    """경고 문구는 입력 중에 계속 떠 있지 않고, '다음 단계로' 버튼을 눌렀는데 필수 항목이
+    비어있을 때만 나타난다 — 그래서 버튼 자체는 항상 눌러볼 수 있게 두고(disabled 아님),
+    클릭 시점에 검증해 통과하면 이동, 실패하면 이번 화면에 경고만 띄운다."""
+    warn_placeholder = st.empty()
+    warn_key = f'_nav_warn_{step}'
+
+    # 필수 항목을 다 채우면, 다시 누르지 않아도 지난번에 떴던 경고는 자동으로 사라진다.
+    if st.session_state.get(warn_key) and is_step_complete(step):
+        st.session_state.pop(warn_key, None)
 
     col_prev, col_next = st.columns([1, 2])
     with col_prev:
@@ -130,7 +136,15 @@ def render_step_nav(step, total=TOTAL_WIZARD_STEPS):
                 st.rerun()
     with col_next:
         next_label = "다음 단계로 →" if step < total else "입력 완료, 보고서 생성하러 가기 →"
-        if st.button(next_label, key=f"btn_next_{step}", type="primary", use_container_width=True,
-                     disabled=bool(missing)):
-            st.session_state['current_step'] = step + 1
-            st.rerun()
+        if st.button(next_label, key=f"btn_next_{step}", type="primary", use_container_width=True):
+            missing = step_missing_items(step)
+            if missing:
+                st.session_state[warn_key] = missing
+            else:
+                st.session_state.pop(warn_key, None)
+                st.session_state['current_step'] = step + 1
+                st.rerun()
+
+    warn = st.session_state.get(warn_key)
+    if warn:
+        warn_placeholder.warning("⚠️ 다음 단계로 넘어가려면 아래 항목을 먼저 채워주세요: " + ", ".join(warn))
