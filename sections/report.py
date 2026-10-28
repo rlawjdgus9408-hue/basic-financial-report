@@ -466,6 +466,22 @@ def _build_report_bytes(company_info, template_path, check_results, score,
     return output.getvalue()
 
 
+def _build_analysis_xlsx(company_name):
+    """자동분석 결과(session_state)로 기초재무분석 엑셀(Graph·Analysis·RAW)을 만든다."""
+    from sections.excel_report import build_analysis_workbook
+
+    df_bs = st.session_state.get('customer_df_bs')
+    df_is = st.session_state.get('customer_df_is')
+    if df_bs is None or df_is is None:
+        return None
+    return build_analysis_workbook(
+        company_name, df_bs, df_is, st.session_state.get('years', []),
+        st.session_state.get('account_bs_comments'), st.session_state.get('account_is_comments'),
+        st.session_state.get('selected_indicators_bs_data'), st.session_state.get('selected_indicators_is_data'),
+        st.session_state.get('indicator_bs_comments'), st.session_state.get('indicator_is_comments'),
+    )
+
+
 def render_report_sidebar(company_info, template_file, check_results, score,
                            selected_dirs, dir_etc, selected_mats, exec_summary):
     """사이드바의 '보고서 생성' 버튼 — 실제 docx 렌더링, 다운로드, (설정 시) 내부 메일 전송."""
@@ -507,6 +523,13 @@ def render_report_sidebar(company_info, template_file, check_results, score,
             st.session_state['report_filename'] = f"{file_name_prefix}_재무진단보고서_{created_date}.docx"
             st.session_state['report_company'] = file_name_prefix
             st.session_state.pop('report_email_sent', None)
+            st.session_state['analysis_xlsx_filename'] = f"{file_name_prefix}_기초재무분석_{created_date}.xlsx"
+            # 분석 엑셀(Graph·Analysis·RAW)은 Word 보고서의 추가 산출물이다 — 실패해도 Word 다운로드는 막지 않는다.
+            try:
+                st.session_state['analysis_xlsx'] = _build_analysis_xlsx(company_info.get('company_name', ''))
+            except Exception as error:
+                st.session_state['analysis_xlsx'] = None
+                st.sidebar.warning(f"분석 엑셀을 만들지 못했습니다: {error}")
             st.sidebar.success("보고서 생성 완료!")
             submission_log.log_event(
                 "보고서 생성", company_info.get('company_name', ''),
@@ -535,6 +558,14 @@ def render_report_sidebar(company_info, template_file, check_results, score,
             file_name=st.session_state['report_filename'],
             use_container_width=True
         )
+        if st.session_state.get('analysis_xlsx'):
+            st.sidebar.download_button(
+                "분석 엑셀 다운로드 (그래프·재무제표·코멘트)",
+                data=st.session_state['analysis_xlsx'],
+                file_name=st.session_state['analysis_xlsx_filename'],
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
         st.sidebar.caption(
             "※ AI 자동 생성 결과로 부정확할 수 있습니다. 정확한 분석은 그로스파이낸스에 문의해 주세요."
         )
