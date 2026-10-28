@@ -42,9 +42,10 @@ def is_configured():
     return bool(user and password)
 
 
-def send_report_notification(company_name, contact, report_bytes, report_filename):
+def send_report_notification(company_name, contact, report_bytes, report_filename,
+                             xlsx_bytes=None, xlsx_filename=None):
     """보고서 생성 완료 알림 메일을 cjw/알파 재무팀 앞으로 보낸다.
-    본문에 문의 회사명·연락처를 넣고, 생성된 .docx 보고서를 첨부한다."""
+    본문에 문의 회사명·연락처를 넣고, 생성된 .docx 보고서(있으면 분석 엑셀도)를 첨부한다."""
     host, port, user, password, sender = _smtp_config()
     if not (user and password):
         raise RuntimeError("SMTP 계정이 설정되지 않았습니다 (.streamlit/secrets.toml 확인 필요).")
@@ -57,7 +58,8 @@ def send_report_notification(company_name, contact, report_bytes, report_filenam
         "고객사 자동분석 보고서가 생성되었습니다.\n\n"
         f"문의 회사명: {company_name or '(미입력)'}\n"
         f"연락처: {contact or '(미입력)'}\n\n"
-        "첨부된 보고서 파일을 확인해 주세요.\n"
+        + ("첨부된 보고서(Word)와 분석 엑셀 파일을 확인해 주세요.\n" if xlsx_bytes
+           else "첨부된 보고서 파일을 확인해 주세요.\n") +
         "(본 메일은 기초재무진단 자동화 시스템이 자동으로 발송했습니다.)"
     )
     msg.add_attachment(
@@ -66,6 +68,13 @@ def send_report_notification(company_name, contact, report_bytes, report_filenam
         subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
         filename=report_filename,
     )
+    if xlsx_bytes:
+        msg.add_attachment(
+            xlsx_bytes,
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=xlsx_filename or "기초재무분석.xlsx",
+        )
 
     with smtplib.SMTP_SSL(host, port, timeout=20) as server:
         server.login(user, password)

@@ -578,6 +578,8 @@ def render_report_sidebar(company_info, template_file, check_results, score,
                         contact=company_info.get('phone', ''),
                         report_bytes=st.session_state['report_bytes'],
                         report_filename=st.session_state['report_filename'],
+                        xlsx_bytes=st.session_state.get('analysis_xlsx'),
+                        xlsx_filename=st.session_state.get('analysis_xlsx_filename'),
                     )
                     st.session_state['report_email_sent'] = True
                     st.sidebar.success(f"{', '.join(email_notify.RECIPIENTS)}에 메일을 보냈습니다.")
