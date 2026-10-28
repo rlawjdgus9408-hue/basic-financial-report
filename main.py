@@ -105,8 +105,14 @@ with st.container(key="step3"):
             # 같은 업로드 결과에 대해 파이프라인(특히 AI 종합의견 생성)을 중복 실행하지 않는다.
             _pkey = pipeline_key(years, df_bs, df_is)
             if st.session_state.get('auto_pipeline_done_for') != _pkey:
-                with st.spinner("재무지표를 계산하고 종합의견을 작성하고 있습니다..."):
-                    run_auto_analysis(df_bs, df_is, years)
+                _analysis_bar = st.progress(0, text="분석을 시작합니다...")
+                run_auto_analysis(
+                    df_bs, df_is, years,
+                    company_info=company_info,
+                    diagnosis={'check_results': check_results, 'selected_dirs': selected_dirs, 'dir_etc': dir_etc},
+                    on_progress=lambda pct, msg: _analysis_bar.progress(pct, text=msg),
+                )
+                _analysis_bar.empty()
                 st.session_state['auto_pipeline_done_for'] = _pkey
                 submission_log.log_event(
                     "자료 업로드", company_info.get('company_name', ''),

@@ -22,10 +22,22 @@ _CHART_LAYOUT = dict(
     font=dict(color='#191919'),
 )
 
+# 범례별 색상 구분용 고정 팔레트. Plotly Express의 자동 색상은 .streamlit/config.toml의
+# 다크 테마(매우 어두운 backgroundColor)를 기반으로 생성되는데, 이 조합에서 Streamlit이
+# 만들어내는 자동 팔레트가 전부 거의 검정(#000001, #000002, ...)으로 뭉개지는 문제가 있다 —
+# 화면 테마와 무관해야 할 PNG 차트(보고서 삽입용)까지 그 영향을 받는다. 색맹 안전성까지
+# 검증된 고정 순서 팔레트를 명시적으로 지정해 테마 상태에 의존하지 않게 한다.
+_CATEGORICAL_COLORS = [
+    '#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+    '#e87ba4', '#008300', '#4a3aa7', '#e34948',
+]
+
 BS_INDICATORS = [
     '유동비율', '당좌비율', '현금비율', '부채비율', '자기자본비율',
     '유동부채비율', '비유동자산비율', '재고자산비율',
     '매출채권회전율', '재고자산회전율', '총자산회전율',
+    '총자산증가율', '차입금의존도',
+    '매출채권회수기간', '재고자산회전일수', '매입채무결제기간', '현금전환주기',
 ]
 IS_INDICATORS = [
     '매출총이익률', '판매관리비율', '영업이익률', '순이익률', '매출원가율',
@@ -73,6 +85,23 @@ def find_account(df, keywords, years):
                         result[yr] = 0
             return result
     return None
+
+
+def sum_accounts(df, pattern, years):
+    """계정과목이 pattern(정규식)에 걸리는 행을 모두 더한 연도별 값 — 차입금처럼 단기·장기·
+    유동성장기·사채로 흩어진 계정의 합계용. 비율 행(률·%), 이자·할인차금 같은 부수 계정,
+    합계·총계 행(세부 행과 이중 합산 방지)은 뺀다. 걸리는 행이 없으면 None."""
+    matches = df[
+        df['계정과목'].str.contains(pattern, na=False)
+        & ~df['계정과목'].str.contains('률|%|이자|할인|합계|총계', na=False)
+    ]
+    if matches.empty:
+        return None
+    result = {}
+    for yr in years:
+        if yr in matches.columns:
+            result[yr] = float(pd.to_numeric(matches[yr], errors='coerce').fillna(0).sum())
+    return result
 
 
 def _get_metric_val(indicator, yr, bs_metrics, is_metrics, common_metrics):
@@ -157,6 +186,28 @@ def calculate_bs_metrics(bs_accounts, is_accounts, years):
         if rev and tot_ast and ast_v:
             m['총자산회전율'] = round(rev.get(yr, 0) / ast_v, 2)
 
+        borrow = bs_accounts.get('차입금') or {}
+        if borrow and ast_v:
+            m['차입금의존도'] = round(borrow.get(yr, 0) / ast_v * 100, 2)
+
+        idx = years.index(yr)
+        if idx > 0 and tot_ast:
+            prev_ast = tot_ast.get(years[idx - 1], 0)
+            if prev_ast:
+                m['총자산증가율'] = round((ast_v - prev_ast) / abs(prev_ast) * 100, 2)
+
+        # 활동성(일수) 지표는 스킬 Q4-1에 따라 기말 잔액 기준 하나로 통일한다(평균 잔액 혼용 금지).
+        ap = bs_accounts.get('매입채무') or {}
+        rev_v, cogs_v = rev.get(yr, 0), cogs.get(yr, 0)
+        dso = round(ar.get(yr, 0) * 365 / rev_v, 1) if ar and rev_v else None
+        dio = round(inv.get(yr, 0) * 365 / cogs_v, 1) if inv and cogs_v else None
+        dpo = round(ap.get(yr, 0) * 365 / cogs_v, 1) if ap and cogs_v else None
+        m['매출채권회수기간'] = dso
+        m['재고자산회전일수'] = dio
+        m['매입채무결제기간'] = dpo
+        if None not in (dso, dio, dpo):
+            m['현금전환주기'] = round(dso + dio - dpo, 1)
+
         metrics[yr] = {k: v for k, v in m.items() if v is not None}
     return metrics
 
@@ -212,7 +263,8 @@ def calculate_common_metrics(bs_accounts, is_accounts, years):
         cl      = bs_accounts.get('유동부채') or {}
         cash    = bs_accounts.get('현금및현금성자산') or {}
         cap     = bs_accounts.get('자본금') or {}
-        opex    = is_accounts.get('영업외비용') or {}
+        # 스킬 Q4-1 이자보상배수 = 영업이익/이자비용. 이자비용 계정이 없을 때만 영업외비용으로 대체한다.
+        opex    = is_accounts.get('이자비용') or is_accounts.get('영업외비용') or {}
 
         ast_v = tot_ast.get(yr, 0)
         eq_v  = eq.get(yr, 0)
@@ -252,6 +304,8 @@ def compute_all_metrics(df_bs, df_is, years):
         '부채총계':        find_account(df_bs, ['부채총계', '총부채', '부채합계'], years),
         '자본총계':        find_account(df_bs, ['자본총계', '자본합계', '순자산', '자본'], years),
         '자본금':          find_account(df_bs, ['자본금', '납입자본', '설립자본'], years),
+        '매입채무':        find_account(df_bs, ['매입채무', '외상매입금'], years),
+        '차입금':          sum_accounts(df_bs, '차입금|사채', years),
     }
     is_accounts = {
         '매출액':    find_account(df_is, ['매출액', '매출', '수익', '총매출', '사업수익'], years),
@@ -262,6 +316,7 @@ def compute_all_metrics(df_bs, df_is, years):
         'EBITDA':    find_account(df_is, ['EBITDA', '에비타'], years),
         '당기순이익': find_account(df_is, ['당기순이익', '당기순손익', '순이익', '당기순손실'], years),
         '영업외비용': find_account(df_is, ['영업외비용', '금융비용', '이자비용'], years),
+        '이자비용':  find_account(df_is, ['이자비용'], years),
     }
 
     bs_metrics     = calculate_bs_metrics(bs_accounts, is_accounts, years)
@@ -355,10 +410,12 @@ def render_financial_metrics(df_bs, df_is, years):
             if chart_data:
                 df_chart = pd.DataFrame(chart_data)
                 if chart_type == "선 그래프":
-                    fig = px.line(df_chart, x='연도', y='값', color='지표', markers=True)
+                    fig = px.line(df_chart, x='연도', y='값', color='지표', markers=True,
+                                  color_discrete_sequence=_CATEGORICAL_COLORS)
                     fig.update_traces(texttemplate='%{y}', textposition='top center')
                 else:
-                    fig = px.bar(df_chart, x='연도', y='값', color='지표', barmode='group')
+                    fig = px.bar(df_chart, x='연도', y='값', color='지표', barmode='group',
+                                 color_discrete_sequence=_CATEGORICAL_COLORS)
                     fig.update_traces(texttemplate='%{y}', textposition='outside')
                 fig.update_layout(
                     title="재무지표 연도별 추이",
@@ -369,3 +426,82 @@ def render_financial_metrics(df_bs, df_is, years):
                 st.plotly_chart(fig, use_container_width=True, config=_CHART_CONFIG)
 
     return bs_metrics, is_metrics, common_metrics, years
+
+
+def _pick_won_scale(values):
+    """금액 시리즈(원 단위)를 억/백만원 중 어느 단위로 보여줄지 고른다. 시리즈 최댓값이
+    1억 미만인 작은 회사에서 '억' 단위를 그대로 쓰면 소수점 1자리로도 0.0이 나와버려서,
+    그럴 때만 백만원 단위로 전환해 자릿수를 확보한다. 반환: (나눌 값, 단위 라벨)."""
+    nums = [abs(v) for v in values if v is not None]
+    if nums and max(nums) < 1e8:
+        return 1e6, "백만원"
+    return 1e8, "억"
+
+
+def _find_account_values(df, keyword, years):
+    """df(원본 계정 x 연도)에서 계정과목에 keyword가 포함된 첫 행을 찾아 연도별 원본 금액을
+    반환한다. 회사마다 "부채총계", "부채총계(Ⅰ+Ⅱ)" 등 표기가 달라 정확히 일치시키기 어려워
+    부분 일치로 찾는다. 못 찾으면 None을 반환해(값 전체가 아닌 개별 반환), 호출부가 그
+    계정이 빠진 콤보 차트를 만들지 말지 판단할 수 있게 한다."""
+    if df is None:
+        return None
+    match = df[df["계정과목"].astype(str).str.contains(keyword, na=False)]
+    if match.empty:
+        return None
+    row = match.iloc[0]
+    try:
+        return [float(row.get(y, 0) or 0) for y in years]
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_combo_chart_png(title, bar_series, line_series, years):
+    """막대(1~2개) + 보조축 선(1개)으로 된 콤보 차트를 PNG 바이트로 만든다.
+    bar_series/line_series: [(이름, 값리스트), ...] — 범례 이름은 호출부가 옆에 두는 원본
+    데이터 표의 행 이름과 정확히 같은 문자열을 넘겨야 한다(차트 제목·범례는 원천 표와
+    동일해야 한다는 Q4-4 규칙)."""
+    from plotly.subplots import make_subplots
+    import plotly.graph_objects as go
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    for i, (name, values) in enumerate(bar_series):
+        fig.add_trace(
+            go.Bar(x=years, y=values, name=name, marker_color=_CATEGORICAL_COLORS[i % len(_CATEGORICAL_COLORS)]),
+            secondary_y=False,
+        )
+    for i, (name, values) in enumerate(line_series):
+        color = _CATEGORICAL_COLORS[(len(bar_series) + i) % len(_CATEGORICAL_COLORS)]
+        fig.add_trace(
+            go.Scatter(x=years, y=values, name=name, mode="lines+markers", line=dict(color=color, width=2)),
+            secondary_y=True,
+        )
+
+    fig.update_layout(
+        title=title,
+        barmode="group",
+        xaxis=dict(type="category", showgrid=False),
+        legend_title_text="",
+        **_CHART_LAYOUT,
+    )
+    fig.update_yaxes(showgrid=True, gridcolor="#E5E5E5", secondary_y=False)
+    fig.update_yaxes(showgrid=False, secondary_y=True)
+    return fig.to_image(format="png", width=900, height=500, scale=2)
+
+
+def _build_line_chart_png(title, series, years):
+    """고정 색상 팔레트를 쓰는 N선 꺾은선 차트 — '수익성 지표' 같은 여러 지표 비교용."""
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    for i, (name, values) in enumerate(series):
+        color = _CATEGORICAL_COLORS[i % len(_CATEGORICAL_COLORS)]
+        fig.add_trace(go.Scatter(x=years, y=values, name=name, mode="lines+markers", line=dict(color=color, width=2)))
+    fig.update_layout(
+        title=title,
+        xaxis=dict(type="category", showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#E5E5E5"),
+        legend_title_text="",
+        **_CHART_LAYOUT,
+    )
+    return fig.to_image(format="png", width=900, height=500, scale=2)

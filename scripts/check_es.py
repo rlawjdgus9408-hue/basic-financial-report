@@ -1,7 +1,7 @@
 """
 Executive Summary(종합의견) 자동 검수 스크립트.
 
-docs/es_guideline.md 의 작성 규칙 중 프로그램적으로 확인 가능한 항목만 검사한다.
+skills/executive-summary/SKILL.md 의 작성 규칙 중 프로그램적으로 확인 가능한 항목만 검사한다.
 §7 "수동 체크리스트" 항목(첫 문장이 회사 정체성으로 시작하는지, 인과 단정이 근거에 맞는지 등)은
 사람의 판단이 필요해 이 스크립트가 검사하지 않는다 — 실행 후 안내되는 체크리스트를 직접 확인할 것.
 
@@ -38,9 +38,9 @@ ENGLISH_ABBR = {
 ENDING_PATTERNS = ["진단됩니다", "판단됩니다", "평가됩니다", "확인됩니다", "보입니다", "필요합니다"]
 HEDGE_PATTERNS = ["시점으로 보입니다", "것으로 보입니다", "시점으로 판단됩니다"]
 
-# §1 분량 — 700~900자 권장(WARN), 500~1200자 밖이면 ERROR
-CHAR_MIN_WARN, CHAR_MAX_WARN = 700, 900
-CHAR_MIN_ERROR, CHAR_MAX_ERROR = 500, 1200
+# §1 분량 — 고객용 자동 생성 지정 분량 1,500자(auto_pipeline.ES_TARGET_CHARS) 기준: 1,350~1,500자 권장(WARN), 1,000~1,800자 밖이면 ERROR
+CHAR_MIN_WARN, CHAR_MAX_WARN = 1350, 1500
+CHAR_MIN_ERROR, CHAR_MAX_ERROR = 1000, 1800
 MAX_SENTENCES_PER_PARAGRAPH = 5
 
 MAX_ARROWS = 2  # §4-2
@@ -218,7 +218,7 @@ def run(path):
         print("[WARN] 없음")
 
     print(
-        "\n[다음 단계] docs/es_guideline.md의 '7. 수동 체크리스트'는 스크립트가 판단할 수 없습니다.\n"
+        "\n[다음 단계] skills/executive-summary/SKILL.md의 '7. 수동 체크리스트'는 스크립트가 판단할 수 없습니다.\n"
         "           (첫 문장이 회사 정체성으로 시작하는지, 적자 원인이 증감 기여도 1위 항목과 일치하는지 등)\n"
         "           직접 확인하세요."
     )

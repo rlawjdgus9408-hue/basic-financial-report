@@ -8,10 +8,12 @@ from pathlib import Path
 import streamlit as st
 import pandas as pd
 
-from sections.ai_client import configured_value, gemini_model, es_guideline_text, ai_comment_extra_rules
+from sections.ai_client import (
+    configured_value, ai_model, skill_text, ES_SKILL_FILES, AUTO_PIPELINE_PREAMBLE,
+    ai_comment_extra_rules, generate_text,
+)
 
 _USER_ICON = Path(__file__).parent.parent / "assets" / "icons" / "assistant_icon.webp"
-_GEMINI_ICON = Path(__file__).parent.parent / "assets" / "icons" / "gemini_icon.svg"
 
 
 def _financial_context():
@@ -42,11 +44,11 @@ def _plain_text_ai_answer(answer):
 
 
 def _quick_style_check(text):
-    """종합의견에 반영하기 전, docs/es_guideline.md 규칙 중 scripts/check_es.py가 프로그램적으로
+    """종합의견에 반영하기 전, ES 스킬 규칙 중 scripts/check_es.py가 프로그램적으로
     검사하는 항목(금지 표현/영어 약어/백만원 단위/화살표 개수)만 빠르게 재사용해 걸러본다.
 
     Claude Code로 ES를 쓸 때는 그 스크립트를 전체(글자수·단락 구성 포함) 돌리도록 스킬이 강제하지만,
-    이 앱의 AI 채팅은 Gemini가 바로 답을 생성해 반영하는 구조라 그 검증을 거치지 않는다 — 여기서
+    이 앱의 AI 채팅은 Claude가 바로 답을 생성해 반영하는 구조라 그 검증을 거치지 않는다 — 여기서
     최소한의 표기 규칙 위반만이라도 앱 안에서 바로 잡아준다. 통과 못해도 반영 자체는 막지 않고
     참고용 경고만 보여준다(최종 판단은 사람 몫)."""
     try:
@@ -62,26 +64,28 @@ def _quick_style_check(text):
     return report.errors
 
 
-def _system_instruction():
+def _system_instruction(auto=False):
     """이 채팅은 곧 기초재무진단보고서의 종합의견(Executive Summary)을 작성/수정하는 용도이므로,
-    docs/es_guideline.md의 ES 작성 규칙을 항상 시스템 지시로 강제한다."""
+    skills/의 ES 스킬 원문(ES_SKILL_FILES)을 항상 시스템 지시로 강제한다.
+    auto=True(고객용 자동 생성)면 사람에게 되묻지 말라는 자동 실행 안내를 앞에 붙인다."""
     parts = [
         "당신은 그로스파이낸스의 중소기업 재무분석 전문가이자 보고서 에디터입니다.",
         "이 대화의 결과물은 기초재무진단보고서 1페이지 '종합의견(Executive Summary)'에 그대로 쓰일 수 있으므로, "
         "아래 [ES 작성 규칙]을 반드시 지켜서 답변하세요. 질문이 특정 수치나 해석만 묻는 경우에도 "
         "종합의견에 바로 반영 가능한 톤·표기 규칙(금지 표현, 단위 표기, 화살표 개수, 인과 단정 금지 등)은 항상 따르세요.",
-        "확인되지 않은 사실은 추정하지 말고 '확인 불가'라고 답하거나 어떤 데이터가 더 필요한지 되물으세요.",
-        "",
-        "[ES 작성 규칙]",
-        es_guideline_text() or "(규칙 파일을 불러오지 못했습니다. 일반적인 재무분석 전문가 기준으로 신중하게 답변하세요.)",
     ]
+    if auto:
+        parts += ["", AUTO_PIPELINE_PREAMBLE]
+    else:
+        parts.append("확인되지 않은 사실은 추정하지 말고 '확인 불가'라고 답하거나 어떤 데이터가 더 필요한지 되물으세요.")
+    parts += ["", "[ES 작성 규칙]", skill_text(ES_SKILL_FILES)]
     extra = ai_comment_extra_rules()
     if extra:
         parts += ["", "[추가 규칙]", extra]
     return "\n".join(parts)
 
 
-def _generate_ai_response(provider, model, api_key, question):
+def _generate_ai_response(model, api_key, question):
     prompt = f"""아래 기업 데이터를 근거로 질문에 한국어로 답변하세요.
 수치가 없는 내용은 추정하지 말고, 답변은 실무자가 바로 활용할 수 있게 작성하세요.
 
@@ -91,17 +95,7 @@ def _generate_ai_response(provider, model, api_key, question):
 [질문]
 {question}
 """
-
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(system_instruction=_system_instruction()),
-    )
-    return response.text or "응답을 받지 못했습니다."
+    return generate_text(api_key, model, _system_instruction(), prompt)
 
 
 def render_ai_comment_chat():
@@ -110,21 +104,21 @@ def render_ai_comment_chat():
             if not _has_financial_data():
                 st.info("재무 엑셀을 업로드하면 재무지표를 바탕으로 더 정확한 분석을 받을 수 있습니다.")
 
-            model = gemini_model()
-            configured_key = configured_value("Gemini", "api_key")
+            model = ai_model()
+            configured_key = configured_value("Claude", "api_key")
             if configured_key:
                 api_key = configured_key
-                st.caption("Gemini API 키가 로컬 보안 설정에서 로드되었습니다.")
+                st.caption("Claude API 키가 로컬 보안 설정에서 로드되었습니다.")
             else:
                 api_key = st.text_input(
-                    "Gemini API 키 (환경변수 또는 Streamlit secrets 설정 시 생략 가능)",
+                    "Claude API 키 (환경변수 또는 Streamlit secrets 설정 시 생략 가능)",
                     type="password",
-                    key="ai_key_gemini",
+                    key="ai_key_claude",
                 ).strip()
 
             messages = st.session_state.setdefault("ai_messages", [])
             for message in messages:
-                avatar = str(_GEMINI_ICON) if message["role"] == "assistant" else str(_USER_ICON)
+                avatar = None if message["role"] == "assistant" else str(_USER_ICON)
                 with st.chat_message(message["role"], avatar=avatar):
                     st.markdown(message["content"])
                     if message["role"] == "assistant":
@@ -141,11 +135,11 @@ def render_ai_comment_chat():
                 question = question.strip()
                 messages.append({"role": "user", "content": question})
                 if not api_key:
-                    answer = "Gemini API 키를 입력하거나 환경변수/Streamlit secrets에 설정해주세요."
+                    answer = "Claude API 키를 입력하거나 환경변수/Streamlit secrets에 설정해주세요."
                 else:
                     try:
                         with st.spinner("재무 데이터를 분석하고 있습니다..."):
-                            answer = _generate_ai_response("Gemini", model, api_key, question)
+                            answer = _generate_ai_response(model, api_key, question)
                     except Exception as error:
                         answer = f"AI 응답을 생성하지 못했습니다: {error}"
                 messages.append({"role": "assistant", "content": answer})
@@ -164,21 +158,30 @@ def render_ai_comment_chat():
                         st.rerun()
 
 
-def build_indicator_table(all_selected, years, bs_metrics, is_metrics, common_metrics):
+def build_indicator_table(all_selected, years, bs_metrics, is_metrics, common_metrics, drop_empty=False):
     """선택된 지표명 목록 -> (표 형태 레코드 리스트, 템플릿용 탭 구분 텍스트).
 
     render_comments()(인터랙티브 화면)와 auto_pipeline.py(고객용 자동분석)가 공유해,
-    '선택된 지표를 표로 만드는 규칙'이 두 군데로 갈라지지 않게 한다."""
+    '선택된 지표를 표로 만드는 규칙'이 두 군데로 갈라지지 않게 한다.
+
+    drop_empty=True면 모든 연도 값이 없거나(None) 0인 지표 행은 표에서 아예 뺀다 —
+    고객용 자동분석은 사람이 추출 결과를 보고 "이 지표는 데이터가 없네" 판단해줄 화면이
+    없어서, 0만 줄줄이 나열되는 행이 그대로 보고서에 남는다(인터랙티브 화면은 사람이 직접
+    선택한 지표라 걸러내지 않는다)."""
     table_data = []
     for ind in all_selected:
         row = {'지표명': ind}
+        values = []
         for yr in years:
             val = next(
                 (m[yr][ind] for m in (bs_metrics, is_metrics, common_metrics)
                  if m.get(yr) and ind in m[yr]),
                 None
             )
+            values.append(val)
             row[yr] = f"{val:,.2f}" if val is not None else "-"
+        if drop_empty and all(v is None or v == 0 for v in values):
+            continue
         table_data.append(row)
 
     lines = ["■ 주요 재무지표", "지표명\t" + "\t".join(years)]

@@ -144,7 +144,7 @@ def _admin_token():
 def _is_admin():
     """고객용 배포판은 실제 외부 고객이 들어오는 화면이라, 운영 점검 도구(API 키 확인 등)를
     아무나 보게 두면 키 등록 여부·끝자리가 노출되고 '연결 테스트' 버튼으로 누구나 과금되는
-    Gemini API 호출을 트리거할 수 있다. secrets.toml에 ADMIN_TOKEN을 설정해둬야만 통과하는
+    Claude API 호출을 트리거할 수 있다. secrets.toml에 ADMIN_TOKEN을 설정해둬야만 통과하는
     게 기본 원칙(미설정 시 항상 막음)이고, 통과하는 경로는 두 가지다:
     (1) ?admin=<토큰> 쿼리파라미터, (2) 사이드바 맨 아래 "🔐 관리자" 로그인(같은 토큰을
     비밀번호로 입력) — 로그인에 성공하면 세션 동안 _admin_authenticated로 기억해 매번
@@ -162,25 +162,24 @@ def _is_admin():
 
 
 def _render_api_key_check():
-    """배포 환경(Streamlit Cloud Secrets)에 Gemini API 키가 제대로 들어갔는지 바로 확인하는 도구.
+    """배포 환경(Streamlit Cloud Secrets)에 Claude API 키가 제대로 들어갔는지 바로 확인하는 도구.
     파일 업로드까지 가지 않아도 키 등록 여부/실제 호출 가능 여부를 바로 알 수 있게 한다.
     _is_admin()을 통과한 경우에만 호출되므로 일반 방문자에게는 보이지 않는다."""
-    from sections.ai_client import configured_value, gemini_model
+    from sections.ai_client import configured_value, ai_model, anthropic_client
 
     with st.sidebar.expander("⚙️ API 키 확인"):
-        api_key = configured_value("Gemini", "api_key")
+        api_key = configured_value("Claude", "api_key")
         if not api_key:
-            st.error("GEMINI_API_KEY가 설정되지 않았습니다.")
+            st.error("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
             return
 
         st.caption(f"키 등록됨 (...{api_key[-4:]})")
         if st.button("연결 테스트", key="btn_api_key_test", use_container_width=True):
-            model = gemini_model()
-            with st.spinner("Gemini API 호출 테스트 중..."):
+            model = ai_model()
+            with st.spinner("Claude API 호출 테스트 중..."):
                 try:
-                    from google import genai
-                    client = genai.Client(api_key=api_key)
-                    client.models.generate_content(model=model, contents="ping")
+                    client = anthropic_client(api_key)
+                    client.messages.create(model=model, max_tokens=16, messages=[{"role": "user", "content": "ping"}])
                     st.success(f"연결 성공! (모델: {model})")
                 except Exception as error:
                     st.error(f"연결 실패: {error}")

@@ -19,7 +19,9 @@ from sections.convert import (
     _file_key,
     _is_transient_error,
 )
-from sections.ai_client import configured_value, gemini_model
+from sections.ai_client import configured_value, ai_model
+
+_MAX_YEARS = 3  # 업로드 자료에 더 많은 연도가 있어도 보고서는 최근 N개년까지만 사용
 
 
 def render_customer_upload():
@@ -51,47 +53,59 @@ def render_customer_upload():
             st.session_state["customer_years"],
         )
 
-    api_key = configured_value("Gemini", "api_key")
+    api_key = configured_value("Claude", "api_key")
     if not api_key:
-        st.error("Gemini API 키가 설정되지 않았습니다. 관리자(그로스파이낸스)에게 문의해주세요.")
+        st.error("Claude API 키가 설정되지 않았습니다. 관리자(그로스파이낸스)에게 문의해주세요.")
         return None, None, []
 
     status_area = st.empty()
+    progress_bar = st.progress(0, text="파일을 데이터로 변환하는 중입니다...")
     try:
-        model = gemini_model()
+        model = ai_model()
         bs_by_year, is_by_year = {}, {}
         skipped_files = []
         dropped_accounts = []
 
-        with st.spinner("파일을 분석하고 있습니다..."):
-            for idx, f in enumerate(source_files):
-                status_area.info(f"({idx + 1}/{len(source_files)}) '{f.name}' 분석 중...")
-                data = _extract_financial_data(
-                    f.getvalue(), f.name, api_key, model,
-                    status=lambda msg: status_area.warning(msg),
-                )
-                yrs = data.get("years", [])
-                if not yrs:
-                    skipped_files.append(f.name)
-                    continue
+        total = len(source_files)
+        for idx, f in enumerate(source_files):
+            pct = int(idx / total * 100)
+            progress_bar.progress(pct, text=f"파일을 데이터로 변환하는 중입니다 ({idx + 1}/{total})...")
+            status_area.info(f"({idx + 1}/{total}) '{f.name}' 분석 중...")
+            data = _extract_financial_data(
+                f.getvalue(), f.name, api_key, model,
+                status=lambda msg: status_area.warning(msg),
+            )
+            yrs = data.get("years", [])
+            if not yrs:
+                skipped_files.append(f.name)
+                continue
 
-                bs_entries, bs_dropped = _validate_year_aligned(data.get("balance_sheet", []), yrs)
-                is_entries, is_dropped = _validate_year_aligned(data.get("income_statement", []), yrs)
-                if bs_dropped or is_dropped:
-                    dropped_accounts += bs_dropped + is_dropped
+            bs_entries, bs_dropped = _validate_year_aligned(data.get("balance_sheet", []), yrs)
+            is_entries, is_dropped = _validate_year_aligned(data.get("income_statement", []), yrs)
+            if bs_dropped or is_dropped:
+                dropped_accounts += bs_dropped + is_dropped
 
-                for yr in yrs:
-                    bs_by_year[yr] = _slice_entries_for_year(bs_entries, yrs, yr)
-                    is_by_year[yr] = _slice_entries_for_year(is_entries, yrs, yr)
+            for yr in yrs:
+                bs_by_year[yr] = _slice_entries_for_year(bs_entries, yrs, yr)
+                is_by_year[yr] = _slice_entries_for_year(is_entries, yrs, yr)
+        progress_bar.progress(100, text="파일 변환 완료")
         status_area.empty()
+        progress_bar.empty()
 
         if skipped_files:
             st.warning(f"연도 정보를 인식하지 못해 건너뛴 파일: {', '.join(skipped_files)}")
 
-        sorted_years = sorted(bs_by_year.keys())
-        if not sorted_years:
+        all_years = sorted(bs_by_year.keys())
+        if not all_years:
             st.error("업로드한 파일에서 연도 정보를 인식하지 못했습니다. 파일을 확인하고 다시 시도해주세요.")
             return None, None, []
+
+        sorted_years = all_years[-_MAX_YEARS:]
+        if len(all_years) > _MAX_YEARS:
+            st.caption(
+                f"※ 업로드 자료에 {len(all_years)}개년({', '.join(all_years)})이 있어, "
+                f"보고서에는 최근 {_MAX_YEARS}개년({', '.join(sorted_years)})만 반영합니다."
+            )
 
         bs_combined = _build_combined_rows([], bs_by_year, sorted_years)
         is_combined = _build_combined_rows([], is_by_year, sorted_years)
@@ -106,9 +120,10 @@ def render_customer_upload():
         return df_bs, df_is, sorted_years
     except Exception as error:
         status_area.empty()
+        progress_bar.empty()
         if _is_transient_error(error):
             st.error(
-                "AI 서버가 일시적으로 혼잡합니다(503 UNAVAILABLE). 잠시 후 다시 시도해주세요."
+                "AI 서버가 일시적으로 혼잡합니다(529 overloaded). 잠시 후 다시 시도해주세요."
             )
         else:
             st.error(f"파일 분석 중 오류가 발생했습니다: {error}")

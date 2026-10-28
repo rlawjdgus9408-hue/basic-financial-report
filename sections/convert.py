@@ -7,6 +7,7 @@ AI가 재무상태표/손익계산서를 추출한다. 여러 연도가 각각 �
 기존 RAW 엑셀이 있으면 새 연도 컬럼들을 이어붙이고, 없으면 새 RAW 엑셀을 만든다. 두 경우 모두
 결과를 표로 보여주고 사용자가 검토/수정한 뒤에만 반영한다.
 """
+import base64
 import hashlib
 import io
 import json
@@ -15,7 +16,7 @@ import time
 import pandas as pd
 import streamlit as st
 
-from sections.ai_client import configured_value, gemini_model
+from sections.ai_client import configured_value, ai_model, anthropic_client
 from sections import raw_template
 
 _MIME_BY_EXT = {
@@ -25,13 +26,13 @@ _MIME_BY_EXT = {
     "jpeg": "image/jpeg",
 }
 
-_MAX_RETRIES = 3  # AI 서버 일시 과부하(503 등) 시 재시도 횟수
+_MAX_RETRIES = 3  # AI 서버 일시 과부하(529 등) 시 재시도 횟수
 
 _ACCOUNT_ENTRY_SCHEMA = {
     "type": "object",
     "properties": {
         "account": {"type": "string"},
-        "code": {"type": "string", "nullable": True},
+        "code": {"type": ["string", "null"]},
         "values": {"type": "array", "items": {"type": "number"}},
     },
     "required": ["account", "values"],
@@ -72,12 +73,16 @@ _PROMPT = """당신은 한국 중소기업 재무제표 판독 전문가입니�
 
 
 def _to_content_parts(file_bytes, filename):
-    """업로드 파일을 Gemini에 보낼 contents 파츠로 변환한다."""
+    """업로드 파일을 Claude에 보낼 메시지 콘텐츠 블록으로 변환한다."""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
+    if ext == "pdf":
+        data = base64.b64encode(file_bytes).decode("ascii")
+        return [{"type": "document", "source": {"type": "base64", "media_type": _MIME_BY_EXT[ext], "data": data}}]
+
     if ext in _MIME_BY_EXT:
-        from google.genai import types
-        return [types.Part.from_bytes(data=file_bytes, mime_type=_MIME_BY_EXT[ext])]
+        data = base64.b64encode(file_bytes).decode("ascii")
+        return [{"type": "image", "source": {"type": "base64", "media_type": _MIME_BY_EXT[ext], "data": data}}]
 
     if ext in ("xlsx", "xls"):
         sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, header=None)
@@ -85,33 +90,47 @@ def _to_content_parts(file_bytes, filename):
         for sheet_name, df in sheets.items():
             lines.append(f"[시트: {sheet_name}]")
             lines.append(df.fillna("").astype(str).to_csv(sep="\t", index=False, header=False))
-        return ["\n".join(lines)]
+        return [{"type": "text", "text": "\n".join(lines)}]
 
     raise ValueError(f"지원하지 않는 파일 형식입니다: .{ext}")
 
 
 def _is_transient_error(error):
-    """일시적인 서버 과부하(503/UNAVAILABLE 등)인지 판단 — 이런 경우만 재시도한다."""
-    msg = str(error)
-    return "503" in msg or "UNAVAILABLE" in msg or "overloaded" in msg.lower() or "RESOURCE_EXHAUSTED" in msg
+    """일시적인 서버 과부하(529 overloaded, 503/UNAVAILABLE 등)인지 판단 — 이런 경우만 재시도한다."""
+    msg = str(error).lower()
+    return any(s in msg for s in ("529", "overloaded", "503", "unavailable", "rate_limit", "resource_exhausted"))
+
+
+_EXTRACTION_TOOL_NAME = "record_financial_extraction"
 
 
 def _extract_financial_data(file_bytes, filename, api_key, model, status=None):
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=api_key)
-    contents = [_PROMPT] + _to_content_parts(file_bytes, filename)
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        response_schema=_EXTRACTION_SCHEMA,
-    )
+    client = anthropic_client(api_key)
+    parts = [{"type": "text", "text": _PROMPT}] + _to_content_parts(file_bytes, filename)
+    tool = {
+        "name": _EXTRACTION_TOOL_NAME,
+        "description": "추출한 재무상태표/손익계산서 계정과목과 연도별 금액을 기록한다.",
+        "input_schema": _EXTRACTION_SCHEMA,
+    }
 
     last_error = None
     for attempt in range(_MAX_RETRIES):
         try:
-            response = client.models.generate_content(model=model, contents=contents, config=config)
-            return json.loads(response.text)
+            response = client.messages.create(
+                model=model,
+                max_tokens=16000,
+                tools=[tool],
+                tool_choice={"type": "tool", "name": _EXTRACTION_TOOL_NAME},
+                messages=[{"role": "user", "content": parts}],
+            )
+            # 길이 제한에 걸리면 도구 입력이 잘려 계정이 일부 빠진 채로 들어올 수 있다 —
+            # 조용히 넘기지 않고 실패로 드러낸다.
+            if response.stop_reason == "max_tokens":
+                raise RuntimeError(f"'{filename}' 추출 결과가 길이 제한(max_tokens)에 걸려 중간에 끊겼습니다")
+            tool_block = next((b for b in response.content if b.type == "tool_use"), None)
+            if tool_block is None:
+                raise RuntimeError(f"'{filename}'에서 추출 결과를 받지 못했습니다 (stop_reason={response.stop_reason})")
+            return tool_block.input
         except Exception as error:
             last_error = error
             if not _is_transient_error(error) or attempt == _MAX_RETRIES - 1:
@@ -210,13 +229,13 @@ def _combined_to_dataframe(combined_rows, existing_years, new_years):
 def _run_conversion(source_files, existing_file):
     """여러 파일을 각각 AI로 추출해 연도별로 합치고, (있으면) 기존 RAW와 병합해
     세션 상태에 검토용 결과를 저장한다."""
-    configured_key = configured_value("Gemini", "api_key")
+    configured_key = configured_value("Claude", "api_key")
     if configured_key:
         api_key = configured_key
-        st.caption("Gemini API 키가 로컬 보안 설정에서 로드되었습니다.")
+        st.caption("Claude API 키가 로컬 보안 설정에서 로드되었습니다.")
     else:
         api_key = st.text_input(
-            "Gemini API 키 (환경변수 또는 Streamlit secrets 설정 시 생략 가능)",
+            "Claude API 키 (환경변수 또는 Streamlit secrets 설정 시 생략 가능)",
             type="password",
             key="convert_api_key",
         ).strip()
@@ -224,12 +243,12 @@ def _run_conversion(source_files, existing_file):
     if not st.button("AI로 변환하기", type="primary", key="convert_run_btn"):
         return
     if not api_key:
-        st.error("Gemini API 키를 입력하거나 환경변수/Streamlit secrets에 설정해주세요.")
+        st.error("Claude API 키를 입력하거나 환경변수/Streamlit secrets에 설정해주세요.")
         return
 
     status_area = st.empty()
     try:
-        model = gemini_model()
+        model = ai_model()
         bs_by_year, is_by_year = {}, {}
         skipped_files = []
         dropped_accounts = []  # [(파일명, [계정명, ...]), ...] — 연도별 값 수가 안 맞아 제외됨
@@ -314,7 +333,7 @@ def _run_conversion(source_files, existing_file):
         status_area.empty()
         if _is_transient_error(error):
             st.error(
-                "Gemini AI 서버가 일시적으로 혼잡합니다 (503 UNAVAILABLE). 자동으로 몇 차례 재시도했지만 "
+                "Claude AI 서버가 일시적으로 혼잡합니다 (529 overloaded). 자동으로 몇 차례 재시도했지만 "
                 "계속 실패했습니다. 잠시 후 'AI로 변환하기'를 다시 눌러주세요."
             )
         else:
