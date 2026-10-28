@@ -38,7 +38,8 @@ ENGLISH_ABBR = {
 ENDING_PATTERNS = ["진단됩니다", "판단됩니다", "평가됩니다", "확인됩니다", "보입니다", "필요합니다"]
 HEDGE_PATTERNS = ["시점으로 보입니다", "것으로 보입니다", "시점으로 판단됩니다"]
 
-# §1 분량 — 고객용 자동 생성 지정 분량 1,500자(auto_pipeline.ES_TARGET_CHARS) 기준: 1,350~1,500자 권장(WARN), 1,000~1,800자 밖이면 ERROR
+# §1 분량 — 고객용 자동 생성 지정 분량 공백 포함 1,500자(auto_pipeline.ES_TARGET_CHARS) 기준:
+# 1,350~1,500자 권장(WARN), 1,000~1,800자 밖이면 ERROR
 CHAR_MIN_WARN, CHAR_MAX_WARN = 1350, 1500
 CHAR_MIN_ERROR, CHAR_MAX_ERROR = 1000, 1800
 MAX_SENTENCES_PER_PARAGRAPH = 5
@@ -53,7 +54,8 @@ SERVICE_NAMES = ["그로스파이낸스", "구독형 재무팀", "CFO 서비스"
 # 금액·비율·배수 표기만 잡는다("2024년"처럼 단순 연도 표기는 "핵심 수치"가 아니라서 제외) —
 # 완벽한 탐지는 아니고 대략적인 감으로 WARN 여부만 판단하는 참고용 카운트다.
 NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:%|억|천만|백만|배)")
-NUMERIC_COUNT_MIN, NUMERIC_COUNT_MAX = 5, 10
+# §3-1 "핵심 5~10개(분량을 늘려도 15개 이내)" — 지정 분량 1,500자는 늘린 분량이라 15개를 상한으로 본다.
+NUMERIC_COUNT_MIN, NUMERIC_COUNT_MAX = 5, 15
 
 
 class Report:
@@ -69,8 +71,8 @@ class Report:
 
 
 def _char_count(text):
-    """공백을 제외한 글자수 (한글 원고 분량 기준)."""
-    return len(re.sub(r"\s", "", text))
+    """공백을 포함한 글자수(줄바꿈만 제외) — 고객용 서머리 분량은 공백 포함 기준으로 정했다."""
+    return len(re.sub(r"[\r\n]", "", text.strip()))
 
 
 def _split_paragraphs(text):
@@ -183,10 +185,9 @@ def check_service_names(text, report):
             report.warn(f"서비스·구독 상품명 '{name}' 발견 — 방향만 암시하고 상품명은 쓰지 않아야 합니다 (§2-3).")
 
 
-def run(path):
-    text = Path(path).read_text(encoding="utf-8")
+def check_all(text):
+    """모든 자동 검사를 돌려 Report를 돌려준다(auto_pipeline.py의 자동 고쳐쓰기에서도 쓴다)."""
     report = Report()
-
     check_length(text, report)
     paragraphs = check_paragraphs(text, report)
     check_banned_phrases(text, report)
@@ -198,9 +199,16 @@ def run(path):
     check_repeated_numbers(paragraphs, report)
     check_numbered_bullets(text, report)
     check_service_names(text, report)
+    return report
+
+
+def run(path):
+    text = Path(path).read_text(encoding="utf-8")
+    report = check_all(text)
+    paragraphs = _split_paragraphs(text)
 
     print(f"=== ES 자동 검수: {path} ===")
-    print(f"글자수(공백 제외): {_char_count(text)}자 / 단락 수: {len(paragraphs)}개\n")
+    print(f"글자수(공백 포함): {_char_count(text)}자 / 단락 수: {len(paragraphs)}개\n")
 
     if report.errors:
         print(f"[ERROR] {len(report.errors)}건 — 반드시 수정하세요")

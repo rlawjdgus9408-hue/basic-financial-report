@@ -111,9 +111,6 @@ def generate_account_comments(api_key, model, df_bs, df_is, years, bs_indicator_
         "description": "선정된 핵심 계정·지표별 Level·색상·코멘트를 기록한다.",
         "input_schema": _SCHEMA,
     }
-
-    import time as _time
-
     system = "\n\n".join([
         AUTO_PIPELINE_PREAMBLE,
         "[계정·지표 코멘트 규칙 — 스킬 원문]",
@@ -121,7 +118,63 @@ def generate_account_comments(api_key, model, df_bs, df_is, years, bs_indicator_
         app_rule_text("account_comment_guideline.md"),
     ])
 
-    last_error = None
+    result = _request_comments(client, model, system, tool, prompt)
+    bs_accounts = _snap_to_source_labels(result.get("bs_accounts", []), df_bs)
+    is_accounts = _snap_to_source_labels(result.get("is_accounts", []), df_is)
+
+    # 스킬 Q2-1 필수 묶음은 존재하면 반드시 포함해야 하는데 AI가 가끔 빠뜨린다(시뮬레이션에서
+    # 단기·장기대여금 누락 확인). 코드로 원본에 있는 필수 계정을 찾아, 빠진 것만 한 번 더 요청해 채운다.
+    missing_bs = _missing_mandatory(bs_accounts, df_bs, years, _MANDATORY_BS)
+    missing_is = _missing_mandatory(is_accounts, df_is, years, _MANDATORY_IS)
+    warnings = []
+    if missing_bs or missing_is:
+        supplement_prompt = f"""{prompt}
+[추가 요청 — 필수 계정 누락 보완]
+아래 계정은 스킬 Q2-1 숨김 불가 필수 묶음인데 앞선 선정에서 빠졌습니다. 이 계정들에 대해서만
+같은 규칙으로 Level·색상·코멘트를 작성하세요. account 필드는 아래 표기를 그대로 씁니다.
+지표(bs_indicators/is_indicators)는 빈 목록으로 둡니다.
+- 재무상태표: {", ".join(missing_bs) or "(없음)"}
+- 손익계산서: {", ".join(missing_is) or "(없음)"}
+
+이미 작성된 다른 계정 코멘트(같은 수치를 반복하지 않도록 참고):
+{_comments_to_text(bs_accounts + is_accounts)}"""
+        try:
+            extra = _request_comments(client, model, system, tool, supplement_prompt)
+            bs_accounts += [i for i in _snap_to_source_labels(extra.get("bs_accounts", []), df_bs)
+                            if i.get("account") in missing_bs]
+            is_accounts += [i for i in _snap_to_source_labels(extra.get("is_accounts", []), df_is)
+                            if i.get("account") in missing_is]
+        except Exception as error:
+            warnings.append(f"필수 계정 보완 요청 실패: {error}")
+        still_missing = (_missing_mandatory(bs_accounts, df_bs, years, _MANDATORY_BS)
+                         + _missing_mandatory(is_accounts, df_is, years, _MANDATORY_IS))
+        if still_missing:
+            warnings.append(f"스킬 Q2-1 필수 계정이 보고서에서 빠졌습니다: {', '.join(still_missing)}")
+
+    bs_accounts = _attach_hex(_sort_by_source(_drop_zero_accounts(bs_accounts, df_bs, years), df_bs))
+    is_accounts = _attach_hex(_sort_by_source(_drop_zero_accounts(is_accounts, df_is, years), df_is))
+    bs_indicators = _attach_hex(result.get("bs_indicators", []))
+    is_indicators = _attach_hex(result.get("is_indicators", []))
+    warnings += (
+        _check_rules(bs_accounts, "재무상태표", _ACCOUNT_COMMENT_MAX_CHARS)
+        + _check_rules(is_accounts, "손익계산서", _ACCOUNT_COMMENT_MAX_CHARS)
+        + _check_rules(bs_indicators, "재무상태표 지표", _INDICATOR_COMMENT_MAX_CHARS)
+        + _check_rules(is_indicators, "손익계산서 지표", _INDICATOR_COMMENT_MAX_CHARS)
+    )
+    return {
+        "bs_accounts": bs_accounts,
+        "is_accounts": is_accounts,
+        "bs_indicators": bs_indicators,
+        "is_indicators": is_indicators,
+        "warnings": warnings,
+    }
+
+
+def _request_comments(client, model, system, tool, prompt):
+    """코멘트 도구 호출 한 번. 503/529류 일시 과부하에는 재시도하고, 응답이 길이 제한에 걸려
+    잘렸거나 도구 결과가 없으면 예외를 던진다(계정이 일부 빠진 채로 조용히 넘어가지 않게)."""
+    import time as _time
+
     for attempt in range(_MAX_RETRIES):
         try:
             response = client.messages.create(
@@ -132,36 +185,93 @@ def generate_account_comments(api_key, model, df_bs, df_is, years, bs_indicator_
                 tool_choice={"type": "tool", "name": _TOOL_NAME},
                 messages=[{"role": "user", "content": prompt}],
             )
-            # 길이 제한에 걸리면 도구 입력이 중간에 잘려 계정이 일부 빠진 채로 들어올 수 있다.
             if response.stop_reason == "max_tokens":
                 raise RuntimeError("계정별 코멘트 응답이 길이 제한(max_tokens)에 걸려 중간에 끊겼습니다")
             tool_block = next((b for b in response.content if b.type == "tool_use"), None)
             if tool_block is None:
                 raise RuntimeError(f"계정별 코멘트 결과를 받지 못했습니다 (stop_reason={response.stop_reason})")
-            result = tool_block.input
-            bs_accounts = _attach_hex(_drop_zero_accounts(result.get("bs_accounts", []), df_bs, years))
-            is_accounts = _attach_hex(_drop_zero_accounts(result.get("is_accounts", []), df_is, years))
-            bs_indicators = _attach_hex(result.get("bs_indicators", []))
-            is_indicators = _attach_hex(result.get("is_indicators", []))
-            warnings = (
-                _check_rules(bs_accounts, "재무상태표", _ACCOUNT_COMMENT_MAX_CHARS)
-                + _check_rules(is_accounts, "손익계산서", _ACCOUNT_COMMENT_MAX_CHARS)
-                + _check_rules(bs_indicators, "재무상태표 지표", _INDICATOR_COMMENT_MAX_CHARS)
-                + _check_rules(is_indicators, "손익계산서 지표", _INDICATOR_COMMENT_MAX_CHARS)
-            )
-            return {
-                "bs_accounts": bs_accounts,
-                "is_accounts": is_accounts,
-                "bs_indicators": bs_indicators,
-                "is_indicators": is_indicators,
-                "warnings": warnings,
-            }
+            return tool_block.input
         except Exception as error:
-            last_error = error
             if not _is_transient_error(error) or attempt == _MAX_RETRIES - 1:
                 raise
             _time.sleep(3 * (attempt + 1))
-    raise last_error
+
+
+def _comments_to_text(items):
+    return "\n".join(f"- {i.get('account')}: {i.get('comment')}" for i in items) or "(없음)"
+
+
+# 스킬 Q2-1 숨김 불가 필수 묶음 — (찾을 패턴, 제외 패턴). 원본에 있고 금액이 있으면 반드시 들어가야 한다.
+# 패턴마다 재무제표 순서상 처음 걸리는 행(= 상위 행)을 필수 계정으로 본다.
+_MANDATORY_BS = [
+    ("유동자산", "비유동"), ("비유동자산", None), ("자산총계", None),
+    ("유동부채", "비유동"), ("비유동부채", None), ("부채총계", None),
+    ("자본금", None), ("이익잉여금|결손금", None), ("자본총계", "부채"),
+    ("현금", None), ("단기금융|단기예금|단기투자", None),
+    ("매출채권", None), ("재고자산", None), ("매입채무", None),
+    ("단기차입금", None), ("장기차입금", "유동성"),
+    ("가지급금", None), ("단기대여금", None), ("장기대여금", None),
+]
+_MANDATORY_IS = [
+    ("매출액", None), ("이자비용", None), ("당기순", None),
+]
+
+
+def _missing_mandatory(items, df, years, groups):
+    """원본(df)에 있는 필수 계정 중 items(선정 결과)에 빠진 계정의 원본 표기 목록."""
+    if df is None:
+        return []
+    labels = df["계정과목"].astype(str)
+    usable = ~labels.str.contains("률|%|/", na=False)
+    selected = {i.get("account") for i in items}
+    missing = []
+    for pattern, exclude in groups:
+        hit = usable & labels.str.contains(pattern, na=False)
+        if exclude:
+            hit &= ~labels.str.contains(exclude, na=False)
+        if not hit.any():
+            continue
+        row = df[hit].iloc[0]
+        has_value = any(row.get(y) not in (0, "0", None, "") and row.get(y) == row.get(y) for y in years)
+        if has_value and row["계정과목"] not in selected and row["계정과목"] not in missing:
+            missing.append(row["계정과목"])
+    return missing
+
+
+def _sort_by_source(items, df):
+    """보고서 표가 재무제표 순서를 따르도록 원본 행 순서로 정렬한다(원본에 없는 이름은 맨 뒤)."""
+    if df is None:
+        return items
+    order = {label: i for i, label in enumerate(df["계정과목"].astype(str))}
+    return sorted(items, key=lambda item: order.get(item.get("account"), len(order)))
+
+
+# 계정명 앞 번호(Ⅰ. / I. / 1. / (2) / 가.)와 공백·괄호·기호 — 원본 표기와 AI 표기를 비교할 때 무시한다.
+_LABEL_PREFIX_RE = re.compile(r"^\s*(?:[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\.|[IVX]+\.|\(\d+\)|\d+\.|[가-하]\.)")
+_LABEL_NOISE_RE = re.compile(r"[\s()（）\[\]+～~·․.,]")
+
+
+def _normalize_label(label):
+    return _LABEL_NOISE_RE.sub("", _LABEL_PREFIX_RE.sub("", str(label)))
+
+
+def _snap_to_source_labels(items, df):
+    """AI가 계정명을 원본과 조금 다르게 적는 경우가 있다(예: "자본총계(Ⅲ+～Ⅶ)" → "자본총계(Ⅲ～Ⅶ)",
+    "2.단기차입금" → "1.단기차입금"). 그러면 보고서가 원본 행을 못 찾아 금액이 '-'로 빠지므로,
+    정확히 일치하지 않는 이름은 번호·공백·기호를 뺀 형태로 다시 비교해 원본 표기로 바꿔 둔다.
+    그래도 못 찾으면 그대로 둔다."""
+    if df is None:
+        return items
+    labels = [str(v) for v in df["계정과목"]]
+    exact = set(labels)
+    by_norm = {}
+    for label in labels:
+        by_norm.setdefault(_normalize_label(label), label)  # 같은 이름이 여럿이면 재무제표 순서상 첫 행
+    for item in items:
+        account = item.get("account", "")
+        if account not in exact:
+            item["account"] = by_norm.get(_normalize_label(account), account)
+    return items
 
 
 def _drop_zero_accounts(items, df, years):

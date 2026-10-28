@@ -87,21 +87,36 @@ def find_account(df, keywords, years):
     return None
 
 
-def sum_accounts(df, pattern, years):
-    """계정과목이 pattern(정규식)에 걸리는 행을 모두 더한 연도별 값 — 차입금처럼 단기·장기·
-    유동성장기·사채로 흩어진 계정의 합계용. 비율 행(률·%), 이자·할인차금 같은 부수 계정,
-    합계·총계 행(세부 행과 이중 합산 방지)은 뺀다. 걸리는 행이 없으면 None."""
-    matches = df[
-        df['계정과목'].str.contains(pattern, na=False)
-        & ~df['계정과목'].str.contains('률|%|이자|할인|합계|총계', na=False)
-    ]
-    if matches.empty:
+_BORROWING_GROUPS = [
+    # (이 묶음에 해당하는 계정 패턴, 제외 패턴)
+    ('단기차입금', None),
+    ('장기차입금', '유동성'),
+    ('유동성장기', None),
+    ('사채', '할인|상환할증'),
+]
+
+
+def sum_borrowings(df, years):
+    """총차입금(단기차입금 + 장기차입금 + 유동성장기부채 + 사채)의 연도별 합계.
+
+    재무제표는 "2.단기차입금" 아래에 "다.기타단기차입금" 같은 세부 행을 함께 싣기 때문에, 패턴에
+    걸리는 행을 전부 더하면 상위·세부 행이 이중으로 잡힌다. 묶음별로 처음 나오는 행(재무제표 순서상
+    상위 행)만 쓴다. "차입금/자본총계" 같은 비율 행(률·%·/)과 이자 계정은 뺀다. 하나도 없으면 None."""
+    labels = df['계정과목'].astype(str)
+    usable = ~labels.str.contains('률|%|/|이자', na=False)
+    rows = []
+    for pattern, exclude in _BORROWING_GROUPS:
+        hit = usable & labels.str.contains(pattern, na=False)
+        if exclude:
+            hit &= ~labels.str.contains(exclude, na=False)
+        if hit.any():
+            rows.append(df[hit].iloc[0])
+    if not rows:
         return None
-    result = {}
-    for yr in years:
-        if yr in matches.columns:
-            result[yr] = float(pd.to_numeric(matches[yr], errors='coerce').fillna(0).sum())
-    return result
+    return {
+        yr: float(sum(pd.to_numeric(r.get(yr), errors='coerce') or 0 for r in rows))
+        for yr in years
+    }
 
 
 def _get_metric_val(indicator, yr, bs_metrics, is_metrics, common_metrics):
@@ -305,7 +320,7 @@ def compute_all_metrics(df_bs, df_is, years):
         '자본총계':        find_account(df_bs, ['자본총계', '자본합계', '순자산', '자본'], years),
         '자본금':          find_account(df_bs, ['자본금', '납입자본', '설립자본'], years),
         '매입채무':        find_account(df_bs, ['매입채무', '외상매입금'], years),
-        '차입금':          sum_accounts(df_bs, '차입금|사채', years),
+        '차입금':          sum_borrowings(df_bs, years),
     }
     is_accounts = {
         '매출액':    find_account(df_is, ['매출액', '매출', '수익', '총매출', '사업수익'], years),
@@ -318,6 +333,13 @@ def compute_all_metrics(df_bs, df_is, years):
         '영업외비용': find_account(df_is, ['영업외비용', '금융비용', '이자비용'], years),
         '이자비용':  find_account(df_is, ['이자비용'], years),
     }
+
+    # 공사업은 매출채권 대신 공사미수금으로 매출 채권을 잡는다. 매출채권만 보면 회수기간이 0에
+    # 가깝게 나와 현금전환주기가 음수로 왜곡되므로(예: 효성에너지팜 2023~2024) 함께 더한다.
+    construction_ar = find_account(df_bs, ['공사미수금'], years)
+    if construction_ar:
+        base = bs_accounts['매출채권'] or {}
+        bs_accounts['매출채권'] = {yr: base.get(yr, 0) + construction_ar.get(yr, 0) for yr in years}
 
     bs_metrics     = calculate_bs_metrics(bs_accounts, is_accounts, years)
     is_metrics     = calculate_is_metrics(is_accounts, years)
@@ -455,11 +477,34 @@ def _find_account_values(df, keyword, years):
         return None
 
 
-def _build_combo_chart_png(title, bar_series, line_series, years):
-    """막대(1~2개) + 보조축 선(1개)으로 된 콤보 차트를 PNG 바이트로 만든다.
+# 보고서용 차트 PNG — report.py가 약 11cm 폭으로 넣는다. 그 크기에서 글자가 8~9pt로 읽히도록
+# 픽셀 글꼴 크기를 정한다(800px 폭 → 1px ≈ 0.14mm, 22px ≈ 3mm ≈ 8.7pt).
+_CHART_PNG_SIZE = dict(width=800, height=520, scale=2)
+_CHART_PNG_FONT = 22
+_CHART_PNG_TITLE_FONT = 26
+
+
+def _png_layout(title):
+    return dict(
+        title=dict(text=title, font=dict(size=_CHART_PNG_TITLE_FONT)),
+        font=dict(color='#191919', size=_CHART_PNG_FONT, family='Malgun Gothic, Arial'),
+        template='plotly_white', paper_bgcolor='#FFFFFF', plot_bgcolor='#FFFFFF',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1, title_text=''),
+        margin=dict(l=70, r=70, t=110, b=50),
+        xaxis=dict(type='category', showgrid=False),
+    )
+
+
+def _value_labels(values, fmt):
+    """3개년 이내 추이라 모든 점이 시작·변곡·종료점이다 — 점마다 값을 붙인다(값 없는 해는 비움)."""
+    return [fmt.format(v) if v is not None else '' for v in values]
+
+
+def _build_combo_chart_png(title, bar_series, line_series, years, bar_unit, line_unit='%'):
+    """막대(1~2개, 왼쪽 축) + 선(1개, 오른쪽 축)으로 된 콤보 차트를 PNG 바이트로 만든다.
     bar_series/line_series: [(이름, 값리스트), ...] — 범례 이름은 호출부가 옆에 두는 원본
     데이터 표의 행 이름과 정확히 같은 문자열을 넘겨야 한다(차트 제목·범례는 원천 표와
-    동일해야 한다는 Q4-4 규칙)."""
+    동일해야 한다는 Q4-4 규칙). 축 제목에 단위를 적는다(Q4-4 차트 작성 공통 가이드)."""
     from plotly.subplots import make_subplots
     import plotly.graph_objects as go
 
@@ -467,41 +512,52 @@ def _build_combo_chart_png(title, bar_series, line_series, years):
 
     for i, (name, values) in enumerate(bar_series):
         fig.add_trace(
-            go.Bar(x=years, y=values, name=name, marker_color=_CATEGORICAL_COLORS[i % len(_CATEGORICAL_COLORS)]),
+            go.Bar(x=years, y=values, name=name, marker_color=_CATEGORICAL_COLORS[i % len(_CATEGORICAL_COLORS)],
+                   text=_value_labels(values, '{:.1f}'), textposition='outside', cliponaxis=False),
             secondary_y=False,
         )
     for i, (name, values) in enumerate(line_series):
         color = _CATEGORICAL_COLORS[(len(bar_series) + i) % len(_CATEGORICAL_COLORS)]
         fig.add_trace(
-            go.Scatter(x=years, y=values, name=name, mode="lines+markers", line=dict(color=color, width=2)),
+            go.Scatter(x=years, y=values, name=name, mode="lines+markers+text", line=dict(color=color, width=3),
+                       marker=dict(size=10), text=_value_labels(values, '{:.1f}' + line_unit),
+                       textposition='top center', cliponaxis=False),
             secondary_y=True,
         )
 
-    fig.update_layout(
-        title=title,
-        barmode="group",
-        xaxis=dict(type="category", showgrid=False),
-        legend_title_text="",
-        **_CHART_LAYOUT,
-    )
-    fig.update_yaxes(showgrid=True, gridcolor="#E5E5E5", secondary_y=False)
-    fig.update_yaxes(showgrid=False, secondary_y=True)
-    return fig.to_image(format="png", width=900, height=500, scale=2)
+    fig.update_layout(barmode="group", **_png_layout(title))
+    fig.update_yaxes(title_text=f"(단위: {bar_unit})", showgrid=True, gridcolor="#E5E5E5", rangemode='tozero',
+                     secondary_y=False)
+    fig.update_yaxes(title_text=f"(단위: {line_unit})", showgrid=False, rangemode='tozero', secondary_y=True)
+    return fig.to_image(format="png", **_CHART_PNG_SIZE)
 
 
-def _build_line_chart_png(title, series, years):
-    """고정 색상 팔레트를 쓰는 N선 꺾은선 차트 — '수익성 지표' 같은 여러 지표 비교용."""
+def _build_line_chart_png(title, series, years, secondary=(), unit='%'):
+    """고정 색상 팔레트를 쓰는 N선 꺾은선 차트 — '수익성 지표' 같은 여러 지표 비교용.
+    secondary에 든 이름의 선은 오른쪽 축에 그린다. 매출원가율(80~100%)처럼 다른 선과 크기
+    차이가 큰 지표를 같은 축에 두면 나머지 선(판관비율·영업이익률 5~10%)이 바닥에 깔려
+    변화가 보이지 않기 때문이다. 축 제목에 어느 선이 어느 축인지 적는다."""
+    from plotly.subplots import make_subplots
     import plotly.graph_objects as go
 
-    fig = go.Figure()
+    fig = make_subplots(specs=[[{"secondary_y": bool(secondary)}]])
+    left_names, right_names = [], []
     for i, (name, values) in enumerate(series):
         color = _CATEGORICAL_COLORS[i % len(_CATEGORICAL_COLORS)]
-        fig.add_trace(go.Scatter(x=years, y=values, name=name, mode="lines+markers", line=dict(color=color, width=2)))
-    fig.update_layout(
-        title=title,
-        xaxis=dict(type="category", showgrid=False),
-        yaxis=dict(showgrid=True, gridcolor="#E5E5E5"),
-        legend_title_text="",
-        **_CHART_LAYOUT,
-    )
-    return fig.to_image(format="png", width=900, height=500, scale=2)
+        on_right = name in secondary
+        (right_names if on_right else left_names).append(name)
+        trace = go.Scatter(x=years, y=values, name=name, mode="lines+markers+text",
+                           line=dict(color=color, width=3, dash='dot' if on_right else 'solid'),
+                           marker=dict(size=10), text=_value_labels(values, '{:.1f}' + unit),
+                           textposition='top center', cliponaxis=False)
+        if secondary:
+            fig.add_trace(trace, secondary_y=on_right)
+        else:
+            fig.add_trace(trace)
+
+    fig.update_layout(**_png_layout(title))
+    left_title = f"{'·'.join(left_names)} (단위: {unit})" if secondary else f"(단위: {unit})"
+    fig.update_yaxes(title_text=left_title, showgrid=True, gridcolor="#E5E5E5", secondary_y=False if secondary else None)
+    if secondary:
+        fig.update_yaxes(title_text=f"{'·'.join(right_names)} (단위: {unit})", showgrid=False, secondary_y=True)
+    return fig.to_image(format="png", **_CHART_PNG_SIZE)

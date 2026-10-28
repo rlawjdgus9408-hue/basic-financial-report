@@ -28,7 +28,6 @@ from sections.comment import (
     build_indicator_table,
     _system_instruction,
     _plain_text_ai_answer,
-    _quick_style_check,
 )
 from sections.diagnosis import DIAGNOSIS_QUESTIONS
 from sections.ai_client import configured_value, ai_model, generate_text
@@ -103,7 +102,8 @@ def build_chart_specs(bs_metrics, is_metrics, common_metrics, years, df_bs):
         series = [(n, _ratio_series(n, years, bs_metrics, is_metrics, common_metrics)) for n in names]
         series = [(n, v) for n, v in series if any(x is not None for x in v)]
         if series:
-            png = _build_line_chart_png('수익성 지표', series, years)
+            # 매출원가율(80~100%)은 오른쪽 축으로 — 같은 축이면 판관비율·영업이익률(한 자릿수 %)이 바닥에 깔린다.
+            png = _build_line_chart_png('수익성 지표', series, years, secondary=('매출원가율',))
             specs.append({
                 'title': '수익성 지표',
                 'png_bytes': png,
@@ -121,7 +121,7 @@ def build_chart_specs(bs_metrics, is_metrics, common_metrics, years, df_bs):
         if liabilities and equity and any(x is not None for x in debt_ratio):
             divisor, unit = _pick_won_scale(liabilities + equity)
             bar_series = [('부채총계', [v / divisor for v in liabilities]), ('자본총계', [v / divisor for v in equity])]
-            png = _build_combo_chart_png('자본 구조', bar_series, [('부채비율', debt_ratio)], years)
+            png = _build_combo_chart_png('자본 구조', bar_series, [('부채비율', debt_ratio)], years, bar_unit=unit)
             specs.append({
                 'title': '자본 구조',
                 'png_bytes': png,
@@ -152,7 +152,7 @@ def build_chart_specs(bs_metrics, is_metrics, common_metrics, years, df_bs):
             divisor, unit = _pick_won_scale(cash)
             png = _build_combo_chart_png(
                 '현금·유동성', [('현금성자산', [v / divisor for v in cash])],
-                [('유동비율', current_ratio)], years,
+                [('유동비율', current_ratio)], years, bar_unit=unit,
             )
             specs.append({
                 'title': '현금·유동성',
@@ -249,15 +249,40 @@ def _report_page_context(df_bs, df_is, years):
     return "\n\n".join(sections) if sections else "(보고서 재무분석 표를 만들지 못했습니다)"
 
 
-def generate_exec_summary(api_key, model, df_bs, df_is, years, company_info=None, diagnosis=None):
-    """보고서 지면(계정·지표 코멘트 표, 그래프 원천 표)과 기업 정보·사전 검토사항을 근거로
-    AI가 종합의견을 한 번에 작성하게 한다. 시스템 지시는 comment.py와 같은 ES 스킬 원문에
-    자동 실행 안내를 붙인 것이고, 후처리(마크다운 정리 + 자동 검수)도 그대로 재사용한다.
-    사람이 다시 눌러줄 버튼이 없는 완전 자동 흐름이라 AI 서버 일시 과부하(529 등)에는 재시도한다."""
+def _es_issues(text):
+    """scripts/check_es.py 전체 검사 결과 중 자동 고쳐쓰기로 바로잡을 항목(모든 ERROR + 분량·문장 수·
+    수치 개수·수치 반복 WARN). 종결 표현 다양성 같은 나머지 WARN은 참고용이라 고쳐쓰기 사유로 쓰지 않는다."""
+    from scripts import check_es as _es
+
+    report = _es.check_all(text)
+    targeted = ("글자수", "문장 수", "수치 표현", "같은 수치")
+    return report.errors + [w for w in report.warns if any(t in w for t in targeted)]
+
+
+def _call_with_retry(fn):
+    """AI 서버 일시 과부하(529 등)에만 재시도한다 — 사람이 다시 눌러줄 버튼이 없는 자동 흐름이라."""
     import time as _time
 
     from sections.convert import _is_transient_error, _MAX_RETRIES
 
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return fn()
+        except Exception as error:
+            if not _is_transient_error(error) or attempt == _MAX_RETRIES - 1:
+                raise
+            _time.sleep(3 * (attempt + 1))
+
+
+def generate_exec_summary(api_key, model, df_bs, df_is, years, company_info=None, diagnosis=None):
+    """보고서 지면(계정·지표 코멘트 표, 그래프 원천 표)과 기업 정보·사전 검토사항을 근거로
+    AI가 종합의견을 작성하게 한다. 시스템 지시는 comment.py와 같은 ES 스킬 원문에 자동 실행
+    안내를 붙인 것이다.
+
+    초안을 scripts/check_es.py로 검수해 고칠 항목(화살표 초과, 수치 과다·반복, 분량 등)이 있으면
+    검수 결과를 그대로 알려주고 한 번 고쳐 쓰게 한다(executive-summary §6-4 "ERROR는 반드시 고치고").
+    반환: (최종 본문, 고쳐 쓴 뒤에도 남은 검수 항목)."""
+    system = _system_instruction(auto=True)
     prompt = f"""아래 자료를 근거로 기초재무진단보고서 1페이지 종합의견(Executive Summary)을 작성하세요.
 
 [기업 정보]
@@ -271,23 +296,28 @@ def generate_exec_summary(api_key, model, df_bs, df_is, years, company_info=None
 {_report_page_context(df_bs, df_is, years)}
 
 [출력 형식]
-- 분량: {ES_TARGET_CHARS:,}자 (사용자 지정 분량 — 규칙 §1에 따라 상한으로 보고 {int(ES_TARGET_CHARS * 0.9):,}~{ES_TARGET_CHARS:,}자로 씁니다).
+- 분량: 공백 포함 {ES_TARGET_CHARS:,}자 (사용자 지정 분량 — 규칙 §1에 따라 상한으로 보고 공백 포함 {int(ES_TARGET_CHARS * 0.9):,}~{ES_TARGET_CHARS:,}자로 씁니다).
+- 분량이 늘어도 수치는 핵심 15개 이내, X%→Y% 화살표는 전체 2개 이내, 한 수치는 한 번만 씁니다(규칙 §3-1·§4-2). 늘어난 분량은 수치 나열이 아니라 판단과 근거 서술로 채웁니다.
 - 종합의견 본문만 출력합니다. '종합의견(Executive Summary)' 같은 제목, 구분선(---), 작성 메모나 확인 요청 문단은 넣지 않습니다.
 - 단락은 빈 줄로 구분합니다. 마크다운 기호(**, #)는 쓰지 않습니다.
 """
-    last_error = None
-    for attempt in range(_MAX_RETRIES):
-        try:
-            raw = generate_text(api_key, model, _system_instruction(auto=True), prompt)
-            cleaned = _plain_text_ai_answer(raw)
-            warnings = _quick_style_check(cleaned)
-            return cleaned, warnings
-        except Exception as error:
-            last_error = error
-            if not _is_transient_error(error) or attempt == _MAX_RETRIES - 1:
-                raise
-            _time.sleep(3 * (attempt + 1))
-    raise last_error
+    draft = _plain_text_ai_answer(_call_with_retry(lambda: generate_text(api_key, model, system, prompt)))
+    issues = _es_issues(draft)
+    if not issues:
+        return draft, []
+
+    revise_prompt = f"""{prompt}
+[초안]
+{draft}
+
+[자동 검수 결과 — 고칠 항목]
+{chr(10).join(f"- {i}" for i in issues)}
+
+위 초안을 검수 결과에 맞게 고쳐 쓰세요. 고칠 항목과 관계없는 문장과 판단은 그대로 둡니다.
+수치를 줄일 때는 핵심이 아닌 수치를 "두 배 가까이", "절반 수준"처럼 의미로 바꾸거나 본문 표로 넘깁니다.
+위 자료에 없는 수치를 새로 넣지 않습니다. 고친 본문만 출력합니다."""
+    revised = _plain_text_ai_answer(_call_with_retry(lambda: generate_text(api_key, model, system, revise_prompt)))
+    return revised, _es_issues(revised)
 
 
 def pipeline_key(years, df_bs, df_is):

@@ -119,9 +119,21 @@ def _new_table(doc, header_row, data_rows, row_colors=None, bold_first_cell_rows
     return table
 
 
+# 템플릿 본문 폭(용지 21.59cm − 좌우 여백 1.78·1.27cm). 표 열 폭 합이 이 값을 넘지 않게 한다.
+_BODY_WIDTH_CM = 18.5
+# 원 단위 금액(예: 26,821,993,311 — 14자)이 10pt에서 한 줄로 들어가는 최소 폭.
+_YEAR_COL_CM = 3.0
+_LABEL_COL_CM = 3.2
+# 그래프 블록: 왼쪽 차트 열 폭(나머지는 오른쪽 원천 표). 차트 PNG 글꼴 크기는 이 폭에 맞춰
+# metrics.py(_CHART_PNG_*)에서 정한다.
+_CHART_COL_CM = 11.4
+
+
 def _commented_table_col_widths(n_year_cols):
-    """계정/지표 코멘트 표의 열 폭 — 라벨·연도 열은 좁게, 코멘트 열만 넓게 고정한다."""
-    return [2.5] + [2.0] * n_year_cols + [6.0]
+    """계정/지표 코멘트 표의 열 폭 — 금액이 줄바꿈되지 않도록 연도 열을 먼저 확보하고,
+    남는 본문 폭을 코멘트 열에 준다."""
+    comment_cm = _BODY_WIDTH_CM - _LABEL_COL_CM - _YEAR_COL_CM * n_year_cols
+    return [_LABEL_COL_CM] + [_YEAR_COL_CM] * n_year_cols + [comment_cm]
 
 
 def _new_heading_paragraph(doc, text):
@@ -130,6 +142,8 @@ def _new_heading_paragraph(doc, text):
     p.text = text
     for run in p.runs:
         run.bold = True
+    # 소제목만 페이지 맨 아래에 남고 그래프·표는 다음 페이지로 넘어가는 일이 없게 한다.
+    p.paragraph_format.keep_with_next = True
     return p
 
 
@@ -196,13 +210,24 @@ def _new_chart_block(doc, spec, years_count):
 
     outer = doc.docx.add_table(rows=1, cols=2)
     outer.style = "Table Grid"
+    outer.autofit = False
+    _set_column_width(outer, 0, _CHART_COL_CM)
+    _set_column_width(outer, 1, _BODY_WIDTH_CM - _CHART_COL_CM)
     left_cell, right_cell = outer.rows[0].cells
-    left_cell.paragraphs[0].add_run().add_picture(io.BytesIO(spec["png_bytes"]), width=Mm(80))
+    left_cell.paragraphs[0].add_run().add_picture(io.BytesIO(spec["png_bytes"]), width=Cm(_CHART_COL_CM - 0.4))
 
     header = spec["table_header"]
     rows = spec["table_rows"]
     nested = right_cell.add_table(rows=1 + len(rows), cols=len(header))
     nested.style = "Table Grid"
+    # 오른쪽 칸(약 7cm)에 지표명("판매관리비율")과 값("233.7%")이 줄바꿈 없이 들어가도록
+    # 9pt로 줄이고, 지표명 열을 먼저 확보한 뒤 나머지를 연도 열에 나눈다.
+    nested.autofit = False
+    inner_cm = _BODY_WIDTH_CM - _CHART_COL_CM - 0.3
+    label_cm = 2.4
+    _set_column_width(nested, 0, label_cm)
+    for j in range(1, len(header)):
+        _set_column_width(nested, j, (inner_cm - label_cm) / max(len(header) - 1, 1))
     for j, h in enumerate(header):
         cell = nested.rows[0].cells[j]
         cell.text = str(h)
@@ -210,6 +235,10 @@ def _new_chart_block(doc, spec, years_count):
     for i, row_vals in enumerate(rows):
         for j, v in enumerate(row_vals):
             nested.rows[i + 1].cells[j].text = str(v)
+    for row in nested.rows:
+        for cell in row.cells:
+            for run in cell.paragraphs[0].runs:
+                run.font.size = Pt(9)
 
     caption = doc.docx.add_paragraph()
     caption.text = f"출처: 표준재무제표 {years_count}개년"
